@@ -4,23 +4,28 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
-
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const {
   roastLimiter,
   authLimiter,
   generalLimiter,
 } = require("./middleware/rateLimiter");
+const { logger, logRequest, attachProcessHandlers } = require("./utils/logger");
+
+attachProcessHandlers();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
+
   res.setHeader("X-Content-Type-Options", "nosniff");
+
   if (process.env.NODE_ENV === "production") {
     res.setHeader("Strict-Transport-Security", "max-age=31536000");
   }
+
   next();
 });
 
@@ -28,11 +33,15 @@ app.use(
   cors({
     origin: [process.env.CLIENT_URL || "http://localhost:3000"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "X-Idempotency-Key"],
   }),
 );
+
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser());
+
+app.use(logRequest);
 
 app.use("/api", generalLimiter);
 
@@ -44,7 +53,7 @@ app.use("/api/battle", require("./routes/battle"));
 
 app.get("/health", (req, res) => {
   res.json({
-    status: "GitRoast server is alive 🔥",
+    status: "🔥 GitRoast server is alive",
     time: new Date().toISOString(),
     mongoDb:
       mongoose.connection.readyState === 1 ? "connected" : "disconnected",
@@ -60,25 +69,17 @@ mongoose
     serverSelectionTimeoutMS: 5000,
   })
   .then(() => {
-    console.log("✅ MongoDB Atlas connected");
+    logger.info("MongoDB", "✅ Connected to Atlas");
     app.listen(PORT, () => {
-      console.log(`🔥 GitRoast server running on port ${PORT}`);
-      console.log(`📡 Health: http://localhost:${PORT}/health`);
+      logger.info("Server", `🚀 Running on port ${PORT}`, {
+        env: process.env.NODE_ENV || "development",
+        port: PORT,
+      });
     });
   })
   .catch((err) => {
-    console.error("❌ MongoDB connection failed:", err.message);
+    logger.error("MongoDB", "❌ Connection failed — server cannot start", {
+      message: err.message,
+    });
     process.exit(1);
   });
-
-process.on("SIGTERM", async () => {
-  console.log("🛑 SIGTERM received — shutting down gracefully");
-  await mongoose.connection.close();
-  process.exit(0);
-});
-
-process.on("SIGINT", async () => {
-  console.log("🛑 SIGINT received — shutting down gracefully");
-  await mongoose.connection.close();
-  process.exit(0);
-});
