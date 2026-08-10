@@ -4,26 +4,32 @@ import RoastPageClient from './RoastPageClient'
 export async function generateMetadata({ params }) {
     const { username } = await params
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
+    const ogImageUrl = `${siteUrl}/api/og?username=${encodeURIComponent(username)}`
+
     return {
-        title: `@${username}'s GitHub Roast 🔥 — GitRoast`,
-        description: `See how brutally @${username}'s GitHub got roasted. Public repos, commit messages, README quality — all judged.`,
+        title: `Get @${username} Roasted — GitRoast 🔥`,
+        description: `See @${username}'s GitHub brutally roasted. Score, grade, and a savage roast. Can you do worse?`,
+
         openGraph: {
-            title: `@${username} just got roasted on GitRoast 🔥`,
-            description: `Commit messages, abandoned repos, and coding shame — all exposed.`,
+            title: `@${username}'s GitHub got roasted 🔥`,
+            description: `See the score, grade, and roast. Then get roasted yourself.`,
             type: 'website',
-            url: `https://gitroast.dev/roast/${username}`,
+            url: `${siteUrl}/roast/${username}`,
             images: [{
-                url: `https://gitroast.dev/api/og?username=${username}`,
+                url: ogImageUrl,
                 width: 1200,
                 height: 630,
-                alt: `@${username}'s GitRoast card`,
+                alt: `@${username}'s GitRoast score card`,
             }],
         },
+
         twitter: {
             card: 'summary_large_image',
-            title: `@${username} got roasted 🔥`,
-            description: 'Get your GitHub brutally roasted on GitRoast.',
-            images: [`https://gitroast.dev/api/og?username=${username}`],
+            title: `@${username}'s GitHub got roasted 🔥`,
+            description: `See the damage. Then get roasted yourself.`,
+            images: [ogImageUrl],
         },
     }
 }

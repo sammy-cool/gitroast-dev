@@ -6,17 +6,10 @@ export async function getRoast(
   token = null,
   intensity = "savage",
 ) {
-  const headers = {
-    "Content-Type": "application/json",
-  };
+  const headers = { "Content-Type": "application/json" };
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  if (idempotencyKey) {
-    headers["X-Idempotency-Key"] = idempotencyKey;
-  }
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (idempotencyKey) headers["X-Idempotency-Key"] = idempotencyKey;
 
   const url = `${API_BASE}/api/roast/${username}?intensity=${encodeURIComponent(intensity)}`;
 
@@ -32,6 +25,7 @@ export async function getRoast(
     const err = new Error(json.message || "Failed to fetch roast");
     err.code = json.error;
     err.status = res.status;
+    err.retryAfter = json.retryAfter || null;
     throw err;
   }
 
@@ -44,7 +38,6 @@ export async function getRoastHistory(username) {
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(8000),
   });
-
   const json = await res.json();
   if (!res.ok) throw new Error(json.message || "Failed to fetch history");
   return json;
@@ -82,10 +75,12 @@ export async function getBattleRoast(user1, user2, token = null) {
   );
 
   const json = await res.json();
+
   if (!res.ok) {
     const err = new Error(json.message || "Battle failed");
     err.code = json.error;
     err.status = res.status;
+    err.retryAfter = json.retryAfter || null;
     throw err;
   }
 

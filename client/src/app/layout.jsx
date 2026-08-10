@@ -4,8 +4,9 @@ import { AuthProvider } from "@/context/AuthContext";
 import { Suspense } from "react";
 import ToastConfig from "@/components/ToastConfig";
 import Footer from "@/components/Footer";
-import "./globals.css";
 import HydrationWrapper from "@/components/HydrationWrapper";
+import GlobalErrorTracker from "@/utils/clientErrorTracker";
+import "./globals.css";
 
 const bebasNeue = Bebas_Neue({
   weight: "400",
@@ -30,7 +31,7 @@ export const viewport = {
   themeColor: "#FF4500",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
 };
 
 export const metadata = {
@@ -49,7 +50,7 @@ export const metadata = {
     description:
       "Paste your GitHub username. Get savagely roasted. Share the pain.",
     type: "website",
-    url: "https://gitroast.dev",
+    url: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
     siteName: "GitRoast",
     images: [
       {
@@ -74,6 +75,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`
         ${bebasNeue.variable}
         ${firaCode.variable}
@@ -81,14 +83,18 @@ export default function RootLayout({ children }) {
       `}
     >
       <body>
+        {}
         <ToastConfig />
 
+        {}
+        <GlobalErrorTracker />
+
+        {}
         <AuthProvider>
-          <HydrationWrapper>
-            <Suspense fallback={null}>
-              {children}
-            </Suspense>
-          </HydrationWrapper>
+          {}
+          <Suspense fallback={null}>
+            <HydrationWrapper>{children}</HydrationWrapper>
+          </Suspense>
         </AuthProvider>
 
         {}
@@ -110,7 +116,6 @@ export default function RootLayout({ children }) {
             });
           `}
         </Script>
-
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 'use client'
 
+
 import { createToast } from 'customizable-toast-notification'
 import { useState } from 'react'
 import { trackShare } from '@/services/roastService'
@@ -37,7 +38,7 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
 
     function handleCopyText() {
         if (!roastText) return
-        const textToCopy = `"${roastText}" — gitroast.dev/roast/${username}`
+        const textToCopy = `"${roastText}" — Roasted by GitRoast`
         navigator.clipboard.writeText(textToCopy)
             .then(() => {
                 setCopiedText(true)
@@ -89,7 +90,7 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
             const element = document.getElementById('roast-card-capture')
             if (!element) throw new Error('Card element not found')
 
-            const scale = isPro ? 2 : 1.5
+            const scale = isPro ? 2 : 1
 
             const canvas = await html2canvas(element, {
                 scale,
@@ -103,30 +104,44 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
             if (!isPro) {
                 const ctx = canvas.getContext('2d')
 
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
-                ctx.fillRect(0, canvas.height - 36, canvas.width, 36)
+                ctx.save()
 
-                ctx.fillStyle = 'rgba(255, 69, 0, 0.9)'
-                ctx.font = `bold ${14 * scale}px Courier New, monospace`
+                ctx.globalAlpha = 0.18
+
+                ctx.fillStyle = '#FF6B00'
+
+                ctx.font = 'bold 38px "Courier New", monospace'
                 ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillText(
-                    'gitroast.dev — Upgrade to Pro for HD card',
-                    canvas.width / 2,
-                    canvas.height - 18
-                )
+
+                const angle = -Math.PI / 6
+
+                const stepX = 260
+                const stepY = 180
+                const text = 'ROASTED BY GITROAST'
+
+                for (let y = -100; y < canvas.height + 100; y += stepY) {
+                    for (let x = -100; x < canvas.width + 100; x += stepX) {
+                        ctx.save()
+                        ctx.translate(x, y)
+                        ctx.rotate(angle)
+                        ctx.fillText(text, 0, 0)
+                        ctx.restore()
+                    }
+                }
+
+                ctx.restore()
             }
 
             const link = document.createElement('a')
-            link.download = `gitroast-${username}-${Date.now()}.png`
+            link.download = `gitroast-${username}.png`
             link.href = canvas.toDataURL('image/png', 1.0)
             link.click()
 
             createToast({
                 type: 'success',
                 message: isPro
-                    ? '🔥 HD roast card downloaded!'
-                    : '🔥 Roast card downloaded! Go Pro for HD version.',
+                    ? '⚡ HD roast card downloaded! No watermark, full quality.'
+                    : '🔥 Card downloaded! Go Pro to remove the watermark.',
                 position: 'top-center',
                 showProgressBar: true,
                 duration: 4000,
@@ -151,7 +166,7 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
     function handlePro() {
         createToast({
             type: 'info',
-            message: '⚡ Unlock AI roasts, private repos + HD card.',
+            message: '⚡ Unlock AI roasts, private repos + HD watermark-free card.',
             position: 'top-center',
             duration: 6000,
             showCloseButton: true,
@@ -169,9 +184,9 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
 
             {}
             <div className="watermark-row">
-                <span className="font-mono watermark-url">gitroast.dev</span>
-                <span className="font-mono watermark-badge">
-                    {isPro ? 'PRO ⚡ · HD CARD' : 'FREE TIER · WATERMARKED'}
+                <span className="font-mono watermark-url">gitroast</span>
+                <span className={`font-mono watermark-badge ${isPro ? 'watermark-badge--pro' : ''}`}>
+                    {isPro ? 'PRO ⚡ · HD · NO WATERMARK' : 'FREE · WATERMARKED'}
                 </span>
             </div>
 
@@ -183,7 +198,6 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
                 >
                     {copied ? '✓ Copied!' : '🔥 Share Roast'}
                 </button>
-
                 <button
                     className="btn btn-twitter share-btn"
                     onClick={handleTwitterShare}
@@ -195,38 +209,27 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
 
             {}
             <div className="secondary-buttons">
-
-                {}
                 <button
                     className={`btn download-btn ${isPro ? 'download-btn--pro' : 'download-btn--free'}`}
                     onClick={handleDownload}
                     disabled={downloading}
+                    title={isPro ? 'Download HD card — no watermark' : 'Download card — watermarked'}
                 >
-                    {downloading ? (
-                        <>⏳ Generating...</>
-                    ) : isPro ? (
-                        <>⬇️ Download HD Card</>
-                    ) : (
-                        <>⬇️ Download Card</>
-                    )}
+                    {downloading
+                        ? '⏳ Generating...'
+                        : isPro
+                            ? '⬇️ Download HD Card — No Watermark'
+                            : '⬇️ Download Card (Watermarked)'}
                 </button>
-
             </div>
 
             {}
             <div className="tertiary-buttons">
-                <button
-                    className="btn btn-ghost copy-text-btn"
-                    onClick={handleCopyText}
-                >
+                <button className="btn btn-ghost copy-text-btn" onClick={handleCopyText}>
                     {copiedText ? '✓ Copied!' : '📋 Copy Roast Text'}
                 </button>
-
                 {!isPro && (
-                    <button
-                        className="btn btn-outline pro-btn"
-                        onClick={handlePro}
-                    >
+                    <button className="btn btn-outline pro-btn" onClick={handlePro}>
                         ⚡ Go Pro — ₹199
                     </button>
                 )}
@@ -235,7 +238,7 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
             {}
             {!isPro && (
                 <p className="pro-hint font-mono">
-                    ⚡ Pro = HD card · No watermark · AI roast · Private repos
+                    ⚡ Pro = HD card · No watermark · AI roast · Nuclear mode · Private repos
                 </p>
             )}
 
@@ -246,6 +249,8 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
           flex-direction: column;
           gap:            10px;
         }
+
+        /* Watermark row */
         .watermark-row {
           display:         flex;
           justify-content: space-between;
@@ -258,7 +263,15 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
           border-radius: var(--radius-sm);
           background:    #111;
           border:        1px dashed #222;
-          color:         #2E2E2E;
+          color:         #3A3A3A;
+          letter-spacing:1px;
+        }
+        /* WHY different style for Pro badge: reward the upgrade visually */
+        .watermark-badge--pro {
+          border-color: rgba(255, 69, 0, 0.4);
+          color:        var(--fire);
+          background:   rgba(255, 69, 0, 0.08);
+          border-style: solid;
         }
 
         /* Primary row */
@@ -269,6 +282,8 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
           border-radius: var(--radius-md);
           font-size:     14px;
         }
+
+        /* WHY black: Twitter/X brand color */
         .btn-twitter {
           background:  #000;
           color:       #fff;
@@ -277,60 +292,56 @@ export default function ShareButtons({ username, roastId, roastText, isPro, onPr
         }
         .btn-twitter:hover { background: #111; border-color: #555; }
 
-        /* Download button — full width, prominent */
+        /* Download — full width, most prominent button */
         .secondary-buttons { display: flex; }
         .download-btn {
-          width:         100%;
-          padding:       13px;
-          border-radius: var(--radius-md);
-          font-size:     15px;
-          font-weight:   700;
-          letter-spacing: 0.3px;
-          transition:    var(--ease);
+          width:          100%;
+          padding:        13px;
+          border-radius:  var(--radius-md);
+          font-size:      14px;
+          font-weight:    700;
+          transition:     var(--ease);
+          letter-spacing: 0.2px;
         }
-        /* Free: subtle style, nudge toward Pro */
+
+        /* WHY muted style for free download:
+           makes it clear it's not the premium version
+           user understands they're getting the watermarked version */
         .download-btn--free {
-          background: var(--bg-elevated);
-          color:      var(--text-primary);
-          border:     1px solid var(--border-hover);
+          background:  var(--bg-elevated);
+          color:       var(--text-secondary);
+          border:      1px solid var(--border-hover);
         }
         .download-btn--free:hover:not(:disabled) {
-          border-color: var(--fire);
-          color:        var(--fire);
+          border-color: rgba(255, 69, 0, 0.4);
+          color:        var(--text-primary);
         }
-        /* Pro: fire gradient — premium feel */
+
+        /* WHY fire gradient for Pro download:
+           premium feel, visually distinct, feels earned */
         .download-btn--pro {
-          background: var(--fire-grad);
-          color:      #fff;
-          border:     none;
-          box-shadow: 0 4px 20px rgba(255, 69, 0, 0.25);
+          background:  var(--fire-grad);
+          color:       #fff;
+          border:      none;
+          box-shadow:  0 4px 20px rgba(255, 69, 0, 0.25);
         }
         .download-btn--pro:hover:not(:disabled) {
-          opacity:   0.92;
-          transform: translateY(-1px);
+          opacity:    0.92;
+          transform:  translateY(-1px);
           box-shadow: 0 6px 28px rgba(255, 69, 0, 0.4);
         }
-        .download-btn:disabled {
-          opacity: 0.6;
-          cursor:  not-allowed;
-        }
+        .download-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         /* Tertiary row */
         .tertiary-buttons { display: flex; gap: 8px; }
-        .copy-text-btn {
-          flex:      1;
-          padding:   9px 12px;
-          font-size: 13px;
-        }
-        .pro-btn {
-          flex:      1;
-          padding:   9px 12px;
-          font-size: 13px;
-        }
+        .copy-text-btn { flex: 1; padding: 9px 12px; font-size: 13px; }
+        .pro-btn       { flex: 1; padding: 9px 12px; font-size: 13px; }
+
         .pro-hint {
           color:      var(--text-muted);
           font-size:  11px;
           text-align: center;
+          line-height: 1.6;
         }
 
         @media (max-width: 380px) {

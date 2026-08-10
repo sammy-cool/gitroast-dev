@@ -1,10 +1,55 @@
 'use client'
 
+
+import { useState, useEffect, useRef } from 'react'
 import StatsGrid from './StatsGrid'
 import CommitShame from './CommitShame'
 import ShareButtons from './ShareButtons'
 
+const TYPING_SPEED = 18
+
 export default function RoastCard({ data, onProClick }) {
+
+  const [displayedText, setDisplayedText] = useState('')
+  const [typingDone, setTypingDone] = useState(false)
+  const [showCursor, setShowCursor] = useState(true)
+  const intervalRef = useRef(null)
+  const cursorTimerRef = useRef(null)
+
+  const roastText = data.roast || ''
+
+  useEffect(() => {
+    setDisplayedText('')
+    setTypingDone(false)
+    setShowCursor(true)
+
+    let currentIndex = 0
+
+    intervalRef.current = setInterval(() => {
+      currentIndex += 1
+      setDisplayedText(roastText.slice(0, currentIndex))
+
+      if (currentIndex >= roastText.length) {
+        clearInterval(intervalRef.current)
+        setTypingDone(true)
+
+        let blinks = 0
+        cursorTimerRef.current = setInterval(() => {
+          setShowCursor(prev => !prev)
+          blinks++
+          if (blinks >= 6) {
+            clearInterval(cursorTimerRef.current)
+            setShowCursor(false)
+          }
+        }, 400)
+      }
+    }, TYPING_SPEED)
+
+    return () => {
+      clearInterval(intervalRef.current)
+      clearInterval(cursorTimerRef.current)
+    }
+  }, [roastText])
 
   const scoreColor =
     data.score < 40 ? 'var(--bad)' :
@@ -42,20 +87,14 @@ export default function RoastCard({ data, onProClick }) {
             className="score-block"
             title={`Roast Score: ${data.score}/100 — ${scoreExplain}`}
           >
-            <div
-              className="score-number font-display"
-              style={{ color: scoreColor }}
-            >
+            <div className="score-number font-display" style={{ color: scoreColor }}>
               {data.score}
             </div>
             <div className="score-label font-mono">/100 ROAST SCORE</div>
             <div className="score-hint font-mono">
               {data.score < 50 ? 'lower = more roastable' : 'higher = better dev'}
             </div>
-            <div
-              className="grade-badge font-mono"
-              style={{ color: 'var(--bad)' }}
-            >
+            <div className="grade-badge font-mono" style={{ color: 'var(--bad)' }}>
               GRADE: {data.grade}
             </div>
           </div>
@@ -75,24 +114,37 @@ export default function RoastCard({ data, onProClick }) {
               <span className="ai-badge font-mono">⚡ AI Roast</span>
             )}
           </div>
-          <p className="roast-text">&ldquo;{data.roast}&rdquo;</p>
+
+          <p className="roast-text">
+            &ldquo;{displayedText}
+            {}
+            {!typingDone && (
+              <span className="typing-cursor animate-blink" />
+            )}
+            {typingDone && showCursor && (
+              <span className="typing-cursor" />
+            )}
+            &rdquo;
+          </p>
         </div>
 
         {}
         <div className="card-brand font-mono">
-          gitroast.dev 🔥
+          gitroast 🔥
         </div>
 
-      </div>{}
+      </div>
 
       {}
-      <ShareButtons
-        username={data.username}
-        roastId={data.roastId}
-        roastText={data.roast}
-        isPro={data.isPro}
-        onProClick={onProClick}
-      />
+      {typingDone && (
+        <ShareButtons
+          username={data.username}
+          roastId={data.roastId}
+          roastText={data.roast}
+          isPro={data.isPro}
+          onProClick={onProClick}
+        />
+      )}
 
       <style jsx>{`
         .roast-card {
@@ -167,6 +219,9 @@ export default function RoastCard({ data, onProClick }) {
           border-bottom: 1px solid var(--border);
           border-left:   3px solid var(--fire);
           background:    linear-gradient(135deg, #110900 0%, #0F0F0F 100%);
+          /* WHY min-height: prevents layout shift as text types in
+             card maintains consistent height during animation */
+          min-height:    120px;
         }
         .roast-text-header {
           display:         flex;
@@ -185,7 +240,22 @@ export default function RoastCard({ data, onProClick }) {
           font-size:   14px;
           line-height: 1.8;
           font-style:  italic;
+          /* WHY min-height: prevents card collapsing at start of animation */
+          min-height:  48px;
         }
+
+        /* WHY typing-cursor styled separately from animate-blink:
+           animate-blink is global — typing-cursor adds specific sizing */
+        .typing-cursor {
+          display:        inline-block;
+          width:          2px;
+          height:         14px;
+          background:     var(--fire);
+          vertical-align: middle;
+          margin-left:    2px;
+          border-radius:  1px;
+        }
+
         .ai-badge {
           font-size:      9px;
           padding:        2px 8px;
@@ -196,24 +266,22 @@ export default function RoastCard({ data, onProClick }) {
           letter-spacing: 1px;
         }
 
-        /* WHY brand row inside capture:
-           every shared image shows gitroast.dev
-           zero effort marketing */
+        /* Brand row */
         .card-brand {
-          padding:         8px 1.5rem;
-          font-size:       10px;
-          color:           var(--fire);
-          text-align:      right;
-          letter-spacing:  1px;
-          background:      #080808;
-          border-top:      1px solid var(--border);
+          padding:        8px 1.5rem;
+          font-size:      10px;
+          color:          var(--fire);
+          text-align:     right;
+          letter-spacing: 1px;
+          background:     #080808;
+          border-top:     1px solid var(--border);
         }
 
         /* Mobile */
         @media (max-width: 480px) {
-          .card-header    { flex-direction: column; align-items: flex-start; }
-          .score-block    { text-align: left; }
-          .profile-name   { max-width: 100%; }
+          .card-header  { flex-direction: column; align-items: flex-start; }
+          .score-block  { text-align: left; }
+          .profile-name { max-width: 100%; }
         }
       `}</style>
     </div>

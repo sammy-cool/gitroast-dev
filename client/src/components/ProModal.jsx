@@ -1,259 +1,306 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import PaymentModal from './PaymentModal'
 import { useAuth } from '@/context/AuthContext'
-import GitHubLoginBtn from './GitHubLoginBtn'
+import { createToast } from 'customizable-toast-notification'
 
-const FREE_FEATURES = [
-    '1 roast per day',
-    'Public repos only',
-    'Watermarked card',
-    'Basic rule-based roast',
-]
-
-const PRO_FEATURES = [
-    'Unlimited roasts',
-    'Public + Private repos',
-    'HD card — no watermark',
-    'AI-powered roast',
-    'Monthly progress comparison',
-    'Shareable link forever',
-    'Team leaderboard',
+const MODAL_PLANS = [
+    {
+        id: 'roaster',
+        name: '🔥 Roaster',
+        tagline: 'The Real Roast',
+        displayPrice: '₹99',
+        period: '/month',
+        badge: 'MOST POPULAR',
+        highlight: true,
+        cta: 'Get Roasted for Real',
+        bullets: [
+            { text: 'Real Gemini AI — not a script', hot: true },
+            { text: '☢️ Nuclear intensity unlocked', hot: true },
+            { text: 'HD card — watermark free', hot: false },
+            { text: 'Unlimited roasts per day', hot: false },
+            { text: '⚡ Pro badge on your card', hot: false },
+        ],
+    },
+    {
+        id: 'historian',
+        name: '📈 Historian',
+        tagline: 'The Long Game',
+        displayPrice: '₹199',
+        period: '/month',
+        badge: 'POWER USERS',
+        highlight: false,
+        cta: 'Track My Shame',
+        bullets: [
+            { text: 'Everything in Roaster', hot: false },
+            { text: 'Monthly roast report email', hot: true },
+            { text: 'Score trend tracking', hot: true },
+            { text: 'Roast streak tracking', hot: false },
+            { text: '🏆 Historian badge on card', hot: false },
+        ],
+    },
 ]
 
 export default function ProModal({ onClose }) {
-    const { isLoggedIn } = useAuth()
+    const [selectedPlan, setSelectedPlan] = useState(null)
+    const { user, loginWithGitHub } = useAuth()
     const router = useRouter()
-    const [mounted, setMounted] = useState(false)
-
-    useEffect(() => { setMounted(true) }, [])
 
     useEffect(() => {
+        const prev = document.body.style.overflow
         document.body.style.overflow = 'hidden'
-        return () => { document.body.style.overflow = '' }
+        return () => { document.body.style.overflow = prev }
     }, [])
 
-    function handleBackdropClick(e) {
-        if (e.target === e.currentTarget) onClose()
+    function handlePlanSelect(planId) {
+        if (!user) {
+            createToast({
+                type: 'info',
+                message: '🔐 Connect GitHub first to upgrade.',
+                position: 'top-center',
+                duration: 6000,
+                showCloseButton: true,
+                cta: {
+                    label: 'Connect GitHub →',
+                    onClick: () => { onClose(); loginWithGitHub() },
+                    autoClose: true,
+                },
+            })
+            return
+        }
+        setSelectedPlan(planId)
     }
 
     return (
-        <div className="modal-backdrop" onClick={handleBackdropClick}>
-            <div className="modal-box card animate-fadeUp">
+        <>
+            {}
+            {createPortal(
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal-box card" onClick={e => e.stopPropagation()}>
 
-                {}
-                <div className="modal-header">
-                    <div>
-                        <h2 className="font-display modal-title text-fire">⚡ Go Pro</h2>
-                        <p className="modal-subtitle">Unlock the full roast experience</p>
-                    </div>
-                    <button
-                        className="btn btn-ghost modal-close"
-                        onClick={onClose}
-                        aria-label="Close modal"
-                    >
-                        ✕
-                    </button>
-                </div>
+                        <button className="modal-close font-mono" onClick={onClose}>✕</button>
 
-                {}
-                <div className="modal-grid">
-
-                    {}
-                    <div className="modal-col">
-                        <p className="col-label font-mono">FREE</p>
-                        <ul className="feature-list">
-                            {FREE_FEATURES.map(f => (
-                                <li key={f} className="feature-item feature-bad">
-                                    <span className="feature-icon">✗</span> {f}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-
-                    {}
-                    <div className="modal-col modal-col-pro">
-                        <p className="col-label font-mono col-label-pro">PRO ⚡</p>
-                        <ul className="feature-list">
-                            {PRO_FEATURES.map(f => (
-                                <li key={f} className="feature-item feature-good">
-                                    <span className="feature-icon">✓</span> {f}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                </div>
-
-                {}
-                <div className="private-repo-note font-mono">
-                    🔐 Private repos require GitHub login — we only read, never write.
-                    Your code stays yours.
-                </div>
-
-                {}
-                <div className="modal-pricing">
-                    <div className="price-option">
-                        {}
-                        <div className="price-amount-row">
-                            <span className="font-display price-symbol" style={{ color: 'var(--fire)' }}>
-                                ₹
-                            </span>
-                            <span className="font-display price-number" style={{ color: 'var(--fire)' }}>
-                                199
-                            </span>
+                        <div className="modal-header">
+                            <p className="font-display modal-title text-fire">UPGRADE YOUR ROAST</p>
+                            <p className="font-mono modal-sub">
+                                Your free roast was generated by rules — not AI.
+                                See what Gemini actually thinks of your GitHub.
+                            </p>
                         </div>
-                        <span className="price-label font-mono">one time</span>
-                    </div>
 
-                    <div className="price-divider font-mono">or</div>
+                        <div className="modal-plans">
+                            {MODAL_PLANS.map(plan => (
+                                <div
+                                    key={plan.id}
+                                    className={`modal-plan ${plan.highlight ? 'modal-plan--highlight' : ''}`}
+                                >
+                                    <div className={`modal-badge font-mono ${plan.highlight ? 'modal-badge--hot' : ''}`}>
+                                        {plan.badge}
+                                    </div>
 
-                    <div className="price-option">
-                        <div className="price-amount-row">
-                            <span className="font-display price-symbol" style={{ color: 'var(--fire-warm)' }}>
-                                ₹
-                            </span>
-                            <span className="font-display price-number" style={{ color: 'var(--fire-warm)' }}>
-                                499
-                            </span>
+                                    <div className="modal-plan-top">
+                                        <div className="modal-plan-info">
+                                            <p className="font-display modal-plan-name">{plan.name}</p>
+                                            <p className="font-mono modal-plan-tagline">{plan.tagline}</p>
+                                        </div>
+                                        <div className="modal-price-block">
+                                            <div className="modal-price-row">
+                                                <span className="font-display modal-currency">₹</span>
+                                                <span className="font-display modal-amount">
+                                                    {plan.displayPrice.replace('₹', '')}
+                                                </span>
+                                            </div>
+                                            <p className="font-mono modal-period">{plan.period}</p>
+                                        </div>
+                                    </div>
+
+                                    <ul className="modal-bullets">
+                                        {plan.bullets.map((b, i) => (
+                                            <li key={i} className={`modal-bullet font-mono ${b.hot ? 'modal-bullet--hot' : ''}`}>
+                                                <span className="bullet-icon">{b.hot ? '🔥' : '✓'}</span>
+                                                <span>{b.text}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+
+                                    <button
+                                        className={`btn modal-cta ${plan.highlight ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => handlePlanSelect(plan.id)}
+                                    >
+                                        {plan.cta}
+                                    </button>
+                                </div>
+                            ))}
                         </div>
-                        <span className="price-label font-mono">/month · teams</span>
-                    </div>
-                </div>
 
-                {}
-                <p className="inr-note font-mono">
-                    💡 Prices in INR · Your bank auto-converts to your local currency
-                </p>
-
-                {}
-                {mounted && (
-                    isLoggedIn ? (
                         <button
-                            className="btn btn-primary modal-cta"
+                            className="btn btn-ghost modal-compare"
                             onClick={() => { onClose(); router.push('/pricing') }}
                         >
-                            ⚡ See Pricing → Unlock Pro
+                            Compare all plans →
                         </button>
-                    ) : (
-                        <GitHubLoginBtn variant="full" />
-                    )
-                )}
 
-                <p className="modal-disclaimer font-mono">
-                    Pay with Card · UPI · NetBanking · Wallet via Razorpay
-                </p>
-            </div>
+                        <p className="font-mono modal-trust">
+                            🔒 Pay with Card · UPI · NetBanking · Wallet via Razorpay · Cancel anytime
+                        </p>
 
-            <style jsx>{`
-        .modal-backdrop {
-          position:        fixed;
-          inset:           0;
-          background:      rgba(0, 0, 0, 0.85);
-          display:         flex;
-          align-items:     center;
-          justify-content: center;
-          padding:         1rem;
-          z-index:         1000;
-          backdrop-filter: blur(4px);
-        }
-        .modal-box {
-          width:          100%;
-          max-width:      540px;
-          max-height:     90vh;
-          overflow-y:     auto;
-          padding:        1.75rem;
-          display:        flex;
-          flex-direction: column;
-          gap:            1.25rem;
-        }
-        .modal-header {
-          display:         flex;
-          justify-content: space-between;
-          align-items:     flex-start;
-        }
-        .modal-title    { font-size: 36px; line-height: 1; }
-        .modal-subtitle { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
-        .modal-close    { padding: 6px 10px; }
-        .modal-grid {
-          display:               grid;
-          grid-template-columns: 1fr 1fr;
-          gap:                   1rem;
-        }
-        .modal-col {
-          background:    var(--bg-elevated);
-          border:        1px solid var(--border);
-          border-radius: var(--radius-md);
-          padding:       1rem;
-        }
-        .modal-col-pro {
-          border-color: var(--fire);
-          background:   rgba(255, 69, 0, 0.04);
-        }
-        .col-label {
-          font-size:      10px;
-          letter-spacing: 2px;
-          color:          var(--text-muted);
-          margin-bottom:  10px;
-          text-transform: uppercase;
-        }
-        .col-label-pro { color: var(--fire); }
-        .feature-list  { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-        .feature-item  { font-size: 13px; display: flex; gap: 8px; line-height: 1.4; }
-        .feature-bad   { color: var(--text-secondary); }
-        .feature-good  { color: var(--text-primary); }
-        .feature-icon  { flex-shrink: 0; font-size: 12px; margin-top: 1px; }
-        .private-repo-note {
-          background:    var(--bg-elevated);
-          border:        1px solid var(--border);
-          border-left:   3px solid var(--fire-warm);
-          border-radius: var(--radius-sm);
-          padding:       10px 14px;
-          font-size:     12px;
-          color:         var(--text-secondary);
-          line-height:   1.6;
-        }
-        /* Pricing row */
-        .modal-pricing {
-          display:         flex;
-          align-items:     center;
-          justify-content: center;
-          gap:             1.5rem;
-        }
-        .price-option     { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-        .price-amount-row { display: flex; align-items: baseline; gap: 1px; }
-        /* WHY: symbol smaller than number — standard pricing pattern */
-        .price-symbol     { font-size: 20px; line-height: 1; }
-        .price-number     { font-size: 36px; line-height: 1; }
-        .price-label      { font-size: 11px; color: var(--text-secondary); }
-        .price-divider    { color: var(--text-muted); font-size: 13px; }
-        /* INR note */
-        .inr-note {
-          text-align:    center;
-          font-size:     11px;
-          color:         var(--text-muted);
-          background:    var(--bg-elevated);
-          border:        1px solid var(--border);
-          border-radius: var(--radius-sm);
-          padding:       6px 12px;
-        }
-        /* CTA */
-        .modal-cta {
-          width:          100%;
-          padding:        14px;
-          font-size:      15px;
-          border-radius:  var(--radius-md);
-          letter-spacing: 0.5px;
-        }
-        .modal-disclaimer {
-          text-align: center;
-          color:      var(--text-ghost);
-          font-size:  11px;
-        }
-        @media (max-width: 480px) {
-          .modal-grid { grid-template-columns: 1fr; }
-        }
-      `}</style>
-        </div>
+                    </div>
+
+                    <style jsx>{`
+            .modal-overlay {
+              position:        fixed;
+              inset:           0;
+              background:      rgba(0, 0, 0, 0.88);
+              display:         flex;
+              align-items:     center;
+              justify-content: center;
+              padding:         1rem;
+              backdrop-filter: blur(6px);
+              z-index:         9998;
+              overflow-y:      auto;
+            }
+            .modal-box {
+              width:          100%;
+              max-width:      640px;
+              padding:        2rem;
+              position:       relative;
+              display:        flex;
+              flex-direction: column;
+              gap:            1.5rem;
+              max-height:     90dvh;
+              overflow-y:     auto;
+              animation:      fadeIn 0.2s ease forwards;
+              margin:         auto;
+            }
+            .modal-close {
+              position:   absolute;
+              top:        1rem;
+              right:      1rem;
+              background: transparent;
+              border:     none;
+              color:      var(--text-muted);
+              cursor:     pointer;
+              font-size:  18px;
+              padding:    4px 8px;
+              line-height:1;
+              z-index:    1;
+              transition: color 0.15s;
+            }
+            .modal-close:hover { color: var(--text-primary); }
+            .modal-header      { text-align: center; padding-top: 0.25rem; }
+            .modal-title       { font-size: clamp(22px, 5vw, 34px); line-height: 1; }
+            .modal-sub {
+              font-size:   13px;
+              color:       var(--text-secondary);
+              margin-top:  10px;
+              line-height: 1.7;
+            }
+            .modal-plans {
+              display:  grid;
+              grid-template-columns: 1fr 1fr;
+              gap:      1rem;
+              overflow: visible;
+            }
+            .modal-plan {
+              padding:        1.25rem;
+              padding-top:    1.75rem;
+              background:     var(--bg-elevated);
+              border:         1px solid var(--border);
+              border-radius:  var(--radius-md);
+              display:        flex;
+              flex-direction: column;
+              gap:            1rem;
+              position:       relative;
+              overflow:       visible;
+            }
+            .modal-plan--highlight {
+              border-color: var(--fire);
+              background:   rgba(255, 69, 0, 0.04);
+              box-shadow:   0 0 16px rgba(255, 69, 0, 0.1);
+            }
+            .modal-badge {
+              position:      absolute;
+              top:           -10px;
+              left:          50%;
+              transform:     translateX(-50%);
+              font-size:     8px;
+              padding:       2px 10px;
+              border-radius: var(--radius-sm);
+              border:        1px solid var(--border);
+              color:         var(--text-muted);
+              letter-spacing:1.5px;
+              white-space:   nowrap;
+              background:    var(--bg-card);
+            }
+            .modal-badge--hot {
+              background: var(--fire-grad);
+              color:      #fff;
+              border:     none;
+            }
+            .modal-plan-top {
+              display:         flex;
+              justify-content: space-between;
+              align-items:     flex-start;
+              gap:             8px;
+            }
+            .modal-plan-info    { min-width: 0; }
+            .modal-plan-name    { font-size: 18px; color: var(--text-primary); line-height: 1; }
+            .modal-plan-tagline { font-size: 10px; color: var(--text-muted); margin-top: 4px; letter-spacing: 1px; }
+            .modal-price-block  { text-align: right; flex-shrink: 0; }
+            .modal-price-row    { display: flex; align-items: baseline; justify-content: flex-end; gap: 1px; }
+            .modal-currency     { font-size: 14px; color: var(--fire); line-height: 1; }
+            .modal-amount       { font-size: 28px; color: var(--fire); line-height: 1; }
+            .modal-period       { font-size: 10px; color: var(--text-muted); }
+            .modal-bullets {
+              list-style:     none;
+              display:        flex;
+              flex-direction: column;
+              gap:            8px;
+              flex:           1;
+            }
+            .modal-bullet {
+              display:     flex;
+              gap:         8px;
+              font-size:   12px;
+              color:       var(--text-secondary);
+              line-height: 1.4;
+              align-items: flex-start;
+            }
+            .modal-bullet--hot { color: var(--text-primary); }
+            .bullet-icon       { flex-shrink: 0; width: 16px; }
+            .modal-cta         { width: 100%; padding: 12px; font-size: 13px; }
+            .modal-compare     { align-self: center; font-size: 13px; }
+            .modal-trust {
+              text-align:  center;
+              font-size:   11px;
+              color:       var(--text-muted);
+              line-height: 1.8;
+            }
+            @media (max-width: 560px) {
+              .modal-plans { grid-template-columns: 1fr; }
+              .modal-box   { padding: 1.5rem 1rem; gap: 1.25rem; }
+            }
+            @media (max-width: 380px) {
+              .modal-box    { padding: 1.25rem 0.875rem; }
+              .modal-plan   { padding: 1rem; padding-top: 1.5rem; }
+              .modal-amount { font-size: 24px; }
+            }
+          `}</style>
+                </div>,
+                document.body
+            )}
+
+            {}
+            {selectedPlan && (
+                <PaymentModal
+                    planId={selectedPlan}
+                    onClose={() => { setSelectedPlan(null); onClose() }}
+                />
+            )}
+        </>
     )
 }

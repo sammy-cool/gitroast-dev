@@ -1,5 +1,6 @@
 'use client'
 
+
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createToast } from 'customizable-toast-notification'
@@ -40,8 +41,7 @@ export default function RoastPageClient({ username }) {
       try {
         const parsed = JSON.parse(cachedRoast)
         const cacheAge = Date.now() - parsed.cachedAt
-        const TEN_MINS = 10 * 60 * 1000
-        if (cacheAge < TEN_MINS) {
+        if (cacheAge < 10 * 60 * 1000) {
           setRoastData(parsed.data)
           setView('result')
           return
@@ -58,7 +58,6 @@ export default function RoastPageClient({ username }) {
     async function fetchRoast() {
       try {
         const token = getToken()
-
         const intensity = sessionStorage.getItem('gitroast_intensity') || 'savage'
 
         const [data] = await Promise.all([
@@ -68,11 +67,7 @@ export default function RoastPageClient({ username }) {
 
         if (cancelled) return
 
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-          data,
-          cachedAt: Date.now(),
-        }))
-
+        sessionStorage.setItem(cacheKey, JSON.stringify({ data, cachedAt: Date.now() }))
         setRoastData(data)
         setView('result')
 
@@ -89,26 +84,56 @@ export default function RoastPageClient({ username }) {
 
         if (err.code === 'USER_NOT_FOUND') {
           createToast({
-            type: 'error', message: `GitHub user "@${username}" not found.`,
-            position: 'top-center', duration: 5000, showCloseButton: true,
+            type: 'error',
+            message: `GitHub user "@${username}" not found.`,
+            position: 'top-center',
+            duration: 5000,
+            showCloseButton: true,
           })
           router.push('/')
           return
         }
+
         if (err.code === 'RATE_LIMIT_EXCEEDED') {
+          const isOurLimit = err.status === 429
+          const retryAfter = err.retryAfter || 60
+          const seconds = `${retryAfter} seconds`
+
+          if (isOurLimit && retryAfter) {
+            sessionStorage.setItem('gitroast_rate_limit', JSON.stringify({
+              retryAfter,
+              setAt: Date.now(),
+            }))
+          }
+
           createToast({
-            type: 'warning', message: 'GitHub rate limit hit. Try again in 60 seconds.',
-            position: 'top-center', duration: 6000, showCloseButton: true,
+            type: 'warning',
+            message: isOurLimit
+              ? `⏱ Too many requests. Try again in ${seconds}.`
+              : `GitHub rate limit hit. Try again in ${seconds}.`,
+            position: 'top-center',
+            duration: Math.min(retryAfter * 1000, 8000),
+            showCloseButton: true,
           })
           router.push('/')
           return
         }
+
         if (err.name === 'TimeoutError') {
-          createToast({ type: 'error', message: 'Request timed out. Try again.', position: 'top-center' })
+          createToast({
+            type: 'error',
+            message: 'Request timed out. Try again.',
+            position: 'top-center',
+          })
           router.push('/')
           return
         }
-        createToast({ type: 'error', message: 'Something broke. Not your fault... probably.', position: 'top-center' })
+
+        createToast({
+          type: 'error',
+          message: 'Something broke. Not your fault... probably.',
+          position: 'top-center',
+        })
         router.push('/')
       }
     }
@@ -152,13 +177,15 @@ export default function RoastPageClient({ username }) {
 
           <div className="upsell-card card">
             <div>
-              <p className="upsell-title">📈 Monthly Roast Subscription</p>
-              <p className="upsell-sub font-mono">Track your improvement. Or your shame.</p>
+              <p className="upsell-title">📈 Historian Plan</p>
+              <p className="upsell-sub font-mono">
+                Monthly report · Score trends · Roast streak tracking.
+              </p>
             </div>
             <div className="upsell-price">
               <div className="upsell-amount-row">
                 <span className="font-display upsell-symbol">₹</span>
-                <span className="font-display upsell-number">499</span>
+                <span className="font-display upsell-number">199</span>
               </div>
               <span className="font-mono upsell-period">/month</span>
             </div>
@@ -169,22 +196,39 @@ export default function RoastPageClient({ username }) {
 
         <style jsx>{`
           .result-page {
-            min-height: 100vh; display: flex; flex-direction: column;
-            align-items: center; padding: 1.5rem 1rem 3rem; gap: 1.25rem;
+            min-height:     100vh;
+            display:        flex;
+            flex-direction: column;
+            align-items:    center;
+            padding:        1.5rem 1rem 6rem;
+            gap:            1.25rem;
           }
           .result-nav {
-            display: flex; justify-content: space-between;
-            align-items: center; width: 100%; max-width: 580px;
+            display:         flex;
+            justify-content: space-between;
+            align-items:     center;
+            width:           100%;
+            max-width:       580px;
           }
-          .nav-logo { font-size: 22px; }
+          .nav-logo      { font-size: 22px; }
           .upsell-card {
-            width: 100%; max-width: 580px; padding: 1rem 1.5rem;
-            display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+            width:           100%;
+            max-width:       580px;
+            padding:         1rem 1.5rem;
+            display:         flex;
+            justify-content: space-between;
+            align-items:     center;
+            gap:             1rem;
           }
           .upsell-title  { font-size: 14px; font-weight: 500; margin: 0 0 4px; }
           .upsell-sub    { color: var(--text-secondary); font-size: 12px; }
           .upsell-price  { text-align: right; flex-shrink: 0; }
-          .upsell-amount-row { display: flex; align-items: baseline; gap: 1px; justify-content: flex-end; }
+          .upsell-amount-row {
+            display:         flex;
+            align-items:     baseline;
+            gap:             1px;
+            justify-content: flex-end;
+          }
           .upsell-symbol { font-size: 16px; color: var(--fire); line-height: 1; }
           .upsell-number { font-size: 26px; color: var(--fire); line-height: 1; }
           .upsell-period { font-size: 11px; color: var(--text-secondary); }

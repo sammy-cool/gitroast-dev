@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createToast } from 'customizable-toast-notification'
 import BattleCard from '@/components/BattleCard'
@@ -55,7 +55,7 @@ export default function BattlePageClient({ user1, user2 }) {
                     type: 'success',
                     message: data.winner
                         ? `⚔️ Battle complete! @${data.winner} is the most roastable!`
-                        : '⚔️ Battle complete! It\'s a draw — equally shameful.',
+                        : "⚔️ Battle complete! It's a draw — equally shameful.",
                     position: 'top-center',
                     showProgressBar: true,
                     duration: 4000,
@@ -64,13 +64,24 @@ export default function BattlePageClient({ user1, user2 }) {
             } catch (err) {
                 if (cancelled) return
 
-                createToast({
-                    type: 'error',
-                    message: err.message || 'Battle failed. Check both usernames.',
-                    position: 'top-center',
-                    duration: 5000,
-                    showCloseButton: true,
-                })
+                if (err.code === 'RATE_LIMIT_EXCEEDED') {
+                    const seconds = err.retryAfter ? `${err.retryAfter} seconds` : 'a minute'
+                    createToast({
+                        type: 'warning',
+                        message: `⏱ Too many battle requests. Try again in ${seconds}.`,
+                        position: 'top-center',
+                        duration: (err.retryAfter || 60) * 1000,
+                        showCloseButton: true,
+                    })
+                } else {
+                    createToast({
+                        type: 'error',
+                        message: err.message || 'Battle failed. Check both usernames.',
+                        position: 'top-center',
+                        duration: 5000,
+                        showCloseButton: true,
+                    })
+                }
                 router.push('/battle')
             }
         }
@@ -152,7 +163,7 @@ export default function BattlePageClient({ user1, user2 }) {
             padding: 1.25rem 1.5rem; min-height: 240px;
             display: flex; flex-direction: column; gap: 2px;
           }
-          .terminal-cmd { color: var(--fire); font-size: 13px; margin-bottom: 12px; }
+          .terminal-cmd  { color: var(--fire); font-size: 13px; margin-bottom: 12px; }
           .terminal-line { font-size: 13px; line-height: 2; }
           .cursor {
             display: inline-block; width: 2px; height: 13px;
@@ -189,7 +200,6 @@ export default function BattlePageClient({ user1, user2 }) {
                             </button>
                         </div>
                     </div>
-
                     <BattleCard data={battleData} />
                 </main>
 
