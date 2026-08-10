@@ -109,7 +109,7 @@ export default function PricingCard({ planKey, price, onSelect }) {
                 }}
                 onClick={() => onSelect(planKey)}
             >
-                {isLoggedIn ? `Get ${config.name} ⚡` : 'Connect GitHub to Pay'}
+                { 'Connect GitHub to Pay'}
             </button>
 
             <p className="plan-note font-mono">

@@ -38,17 +38,17 @@ export default function PricingPage() {
     }, [])
 
     function handleSelectPlan(planKey) {
-        if (!isLoggedIn) {
-            createToast({
-                type: 'info',
-                textColor: "snow",
-                message: 'Connect GitHub first to unlock Pro.',
-                position: 'top-center',
-                duration: 5000,
-                showCloseButton: true,
-            })
-            return
-        }
+        // if (!isLoggedIn) {
+        //     createToast({
+        //         type: 'info',
+        //         textColor: "snow",
+        //         message: 'Connect GitHub first to unlock Pro.',
+        //         position: 'top-center',
+        //         duration: 5000,
+        //         showCloseButton: true,
+        //     })
+        //     return
+        // }
         setSelectedPlan(planKey)
     }
 
@@ -61,7 +61,7 @@ export default function PricingPage() {
     return (
         <main className="pricing-page">
 
-            {}
+            { }
             <div className="pricing-nav">
                 <div
                     className="font-display nav-logo text-fire"
@@ -73,7 +73,7 @@ export default function PricingPage() {
                 <GitHubLoginBtn variant="compact" />
             </div>
 
-            {}
+            { }
             {mounted && isPro && (
                 <div className="already-pro card">
                     <p className="font-display already-pro-title text-fire">
@@ -91,7 +91,7 @@ export default function PricingPage() {
                 </div>
             )}
 
-            {}
+            { }
             {mounted && !isPro && !selectedPlan && (
                 <>
                     <div className="pricing-header">
@@ -106,7 +106,7 @@ export default function PricingPage() {
                         </p>
                     </div>
 
-                    {}
+                    { }
                     <div className="pricing-grid">
                         {plansLoading ? (
                             ['pro_one_time', 'pro_monthly', 'teams_monthly'].map(key => (
@@ -128,6 +128,7 @@ export default function PricingPage() {
                         ) : (
                             plans.map(plan => (
                                 <PricingCard
+                                    id={plan.id}
                                     key={plan.key}
                                     planKey={plan.key}
                                     price={plan.price}
@@ -137,8 +138,8 @@ export default function PricingPage() {
                         )}
                     </div>
 
-                    {}
-                    {}
+                    { }
+                    { }
                     {!plansLoading && (
                         <div className="trust-row">
                             {[
@@ -156,8 +157,8 @@ export default function PricingPage() {
                         </div>
                     )}
 
-                    {}
-                    {}
+                    { }
+                    { }
                     {!plansLoading && (
                         <div className="faq card">
                             <p className="faq-title font-mono">FAQ</p>
@@ -197,7 +198,7 @@ export default function PricingPage() {
                 </>
             )}
 
-            {}
+            { }
             {mounted && !isPro && selectedPlan && selectedPlanData && (
                 <div className="payment-wrap card">
                     <PaymentFlow
