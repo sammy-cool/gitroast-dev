@@ -1,15 +1,14 @@
 'use client'
 
-
 import { useState, useEffect, useRef } from 'react'
 import StatsGrid from './StatsGrid'
 import CommitShame from './CommitShame'
 import ShareButtons from './ShareButtons'
+import RoastReactions from './RoastReactions'
 
 const TYPING_SPEED = 18
 
 export default function RoastCard({ data, onProClick }) {
-
   const [displayedText, setDisplayedText] = useState('')
   const [typingDone, setTypingDone] = useState(false)
   const [showCursor, setShowCursor] = useState(true)
@@ -65,12 +64,10 @@ export default function RoastCard({ data, onProClick }) {
   return (
     <div className="roast-card card">
 
-      {}
       <div id="roast-card-capture">
 
         {}
         <div className="card-header">
-
           <div className="profile-info">
             <div className="avatar font-display">
               {data.username[0].toUpperCase()}
@@ -114,26 +111,28 @@ export default function RoastCard({ data, onProClick }) {
               <span className="ai-badge font-mono">⚡ AI Roast</span>
             )}
           </div>
-
           <p className="roast-text">
             &ldquo;{displayedText}
-            {}
-            {!typingDone && (
-              <span className="typing-cursor animate-blink" />
-            )}
-            {typingDone && showCursor && (
-              <span className="typing-cursor" />
-            )}
+            {!typingDone && <span className="typing-cursor animate-blink" />}
+            {typingDone && showCursor && <span className="typing-cursor" />}
             &rdquo;
           </p>
         </div>
+
+        {}
+        {typingDone && data.roastId && (
+          <RoastReactions
+            roastId={data.roastId}
+            initialReactions={data.reactions || {}}
+          />
+        )}
 
         {}
         <div className="card-brand font-mono">
           gitroast 🔥
         </div>
 
-      </div>
+      </div>{}
 
       {}
       {typingDone && (
@@ -147,12 +146,8 @@ export default function RoastCard({ data, onProClick }) {
       )}
 
       <style jsx>{`
-        .roast-card {
-          width:     100%;
-          max-width: 580px;
-        }
+        .roast-card { width: 100%; max-width: 580px; }
 
-        /* Header */
         .card-header {
           padding:         1.25rem 1.5rem;
           background:      linear-gradient(160deg, #111 0%, #180800 100%);
@@ -191,13 +186,8 @@ export default function RoastCard({ data, onProClick }) {
           white-space:   nowrap;
           max-width:     200px;
         }
-        .profile-meta {
-          color:     var(--text-secondary);
-          font-size: 11px;
-          margin:    2px 0 0;
-        }
+        .profile-meta { color: var(--text-secondary); font-size: 11px; margin: 2px 0 0; }
 
-        /* Score */
         .score-block  { text-align: right; flex-shrink: 0; cursor: help; }
         .score-number { font-size: clamp(36px, 8vw, 52px); line-height: 1; }
         .score-label  { color: var(--text-muted); font-size: 10px; }
@@ -213,14 +203,11 @@ export default function RoastCard({ data, onProClick }) {
           font-weight:   600;
         }
 
-        /* Roast text */
         .roast-text-block {
           padding:       1.4rem 1.5rem;
           border-bottom: 1px solid var(--border);
           border-left:   3px solid var(--fire);
           background:    linear-gradient(135deg, #110900 0%, #0F0F0F 100%);
-          /* WHY min-height: prevents layout shift as text types in
-             card maintains consistent height during animation */
           min-height:    120px;
         }
         .roast-text-header {
@@ -240,12 +227,8 @@ export default function RoastCard({ data, onProClick }) {
           font-size:   14px;
           line-height: 1.8;
           font-style:  italic;
-          /* WHY min-height: prevents card collapsing at start of animation */
           min-height:  48px;
         }
-
-        /* WHY typing-cursor styled separately from animate-blink:
-           animate-blink is global — typing-cursor adds specific sizing */
         .typing-cursor {
           display:        inline-block;
           width:          2px;
@@ -255,7 +238,6 @@ export default function RoastCard({ data, onProClick }) {
           margin-left:    2px;
           border-radius:  1px;
         }
-
         .ai-badge {
           font-size:      9px;
           padding:        2px 8px;
@@ -265,8 +247,6 @@ export default function RoastCard({ data, onProClick }) {
           color:          var(--fire-warm);
           letter-spacing: 1px;
         }
-
-        /* Brand row */
         .card-brand {
           padding:        8px 1.5rem;
           font-size:      10px;
@@ -277,7 +257,6 @@ export default function RoastCard({ data, onProClick }) {
           border-top:     1px solid var(--border);
         }
 
-        /* Mobile */
         @media (max-width: 480px) {
           .card-header  { flex-direction: column; align-items: flex-start; }
           .score-block  { text-align: left; }

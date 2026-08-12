@@ -77,6 +77,12 @@ const roastSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    reactions: {
+      relatable: { type: Number, default: 0 },
+      destroyed: { type: Number, default: 0 },
+      savage: { type: Number, default: 0 },
+    },
   },
   {
     timestamps: true,
@@ -84,9 +90,7 @@ const roastSchema = new mongoose.Schema(
 );
 
 roastSchema.index({ username: 1, createdAt: -1 });
-
 roastSchema.index({ score: 1, createdAt: -1 });
-
 
 roastSchema.statics.getHistory = function (username, limit = 10) {
   return this.find({ username }).sort({ createdAt: -1 }).limit(limit);
@@ -101,15 +105,23 @@ roastSchema.statics.getLeaderboard = function (limit = 10) {
         roastCount: { $sum: 1 },
       },
     },
-    {
-      $sort: { bestScore: 1 },
-    },
+    { $sort: { bestScore: 1 } },
     { $limit: limit },
   ]);
 };
 
 roastSchema.statics.incrementShare = function (id) {
   return this.findByIdAndUpdate(id, { $inc: { shareCount: 1 } });
+};
+
+roastSchema.statics.addReaction = function (id, type) {
+  const allowed = ["relatable", "destroyed", "savage"];
+  if (!allowed.includes(type)) throw new Error("Invalid reaction type");
+  return this.findByIdAndUpdate(
+    id,
+    { $inc: { [`reactions.${type}`]: 1 } },
+    { new: true, select: "reactions" },
+  );
 };
 
 module.exports = mongoose.model("Roast", roastSchema);
