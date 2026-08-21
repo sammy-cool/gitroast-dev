@@ -1,3 +1,5 @@
+const { logger } = require("../utils/logger");
+
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
@@ -132,7 +134,7 @@ function getWorstStat({ repoAnalysis, commitAnalysis, readme, _raw }) {
 
 async function generateAIRoast(data, intensity = "savage") {
   if (!process.env.GEMINI_API_KEY) {
-    console.warn("[AI] No Gemini API key — using rule engine");
+    logger.warn("AI", "No Gemini API key — using rule engine");
     return null;
   }
 
@@ -157,7 +159,7 @@ async function generateAIRoast(data, intensity = "savage") {
     );
 
     if (!response.ok) {
-      console.error("[AI] Gemini error:", response.status);
+      logger.error("AI", "Gemini API error", { status: response.status });
       return null;
     }
 
@@ -168,7 +170,7 @@ async function generateAIRoast(data, intensity = "savage") {
 
     return roast.replace(/^["']|["']$/g, "").trim();
   } catch (err) {
-    console.error("[AI] Gemini failed:", err.message);
+    logger.error("AI", "Gemini request failed", { message: err.message });
     return null;
   }
 }

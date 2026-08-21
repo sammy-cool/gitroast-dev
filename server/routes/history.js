@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Roast = require("../models/Roast");
 const { optionalAuth } = require("../middleware/auth");
+const { logger } = require("../utils/logger");
 
 router.get("/:username", async (req, res) => {
   const { username } = req.params;
@@ -24,7 +25,7 @@ router.get("/:username", async (req, res) => {
       history,
     });
   } catch (err) {
-    console.error("[History] Error:", err.message);
+    logger.error("History", "Fetch failed", { message: err.message });
     return res.status(500).json({
       error: "SERVER_ERROR",
       message: "Could not fetch history.",
@@ -37,7 +38,7 @@ router.get("/leaderboard/worst", async (req, res) => {
     const leaderboard = await Roast.getLeaderboard(10);
     return res.status(200).json({ success: true, leaderboard });
   } catch (err) {
-    console.error("[Leaderboard] Error:", err.message);
+    logger.error("Leaderboard", "Fetch failed", { message: err.message });
     return res.status(500).json({
       error: "SERVER_ERROR",
       message: "Could not fetch leaderboard.",
@@ -100,7 +101,7 @@ router.post("/:id/react", async (req, res) => {
       reactions: updated.reactions,
     });
   } catch (err) {
-    console.error("[React] Error:", err.message);
+    logger.error("React", "Save reaction failed", { message: err.message });
     return res.status(500).json({
       error: "SERVER_ERROR",
       message: "Could not save reaction.",

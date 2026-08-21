@@ -7,6 +7,7 @@ const {
   createOrder,
   verifyPayment,
 } = require("../services/paymentService");
+const { logger } = require("../utils/logger");
 
 router.get("/plans", (req, res) => {
   const publicPlans = Object.values(PLANS).map((plan) => ({
@@ -19,7 +20,7 @@ router.get("/plans", (req, res) => {
 });
 
 router.post("/create-order", requireAuth, async (req, res) => {
-  console.log("[Payment] create-order body:", req.body);
+  logger.debug("Payment", "create-order body", { body: req.body });
   const { planId } = req.body;
 
   if (!planId) {
@@ -94,11 +95,7 @@ router.post("/verify", requireAuth, async (req, res) => {
         status: "captured",
       });
     } catch (paymentErr) {
-      console.error(
-        "[Payment] Payment.create failed:",
-        paymentErr.message,
-        paymentErr,
-      );
+      logger.error("Payment", "Verify failed", { message: paymentErr.message });
     }
 
     req.user.isPro = true;
@@ -111,7 +108,7 @@ router.post("/verify", requireAuth, async (req, res) => {
       isPro: true,
     });
   } catch (err) {
-    console.error("[Payment] verify DB error:", err.message, err);
+    logger.error("Payment", "Verify DB error", { message: err.message });
     return res.status(500).json({
       error: "DB_ERROR",
       message:

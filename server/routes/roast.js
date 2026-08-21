@@ -5,6 +5,7 @@ const { generateRoast } = require("../services/roastEngine");
 const { generateAIRoast } = require("../services/aiService");
 const { optionalAuth, requirePro } = require("../middleware/auth");
 const Roast = require("../models/Roast");
+const { logger } = require("../utils/logger");
 
 const processedKeys = new Map();
 setInterval(() => {
@@ -113,7 +114,7 @@ router.get("/:username", optionalAuth, async (req, res) => {
       });
       data.roastId = savedRoast._id;
     } catch (dbErr) {
-      console.error("[Roast] DB save failed:", dbErr.message);
+      logger.error("Roast", "DB save failed", { message: dbErr.message });
     }
 
     if (req.user) {
@@ -121,7 +122,9 @@ router.get("/:username", optionalAuth, async (req, res) => {
       req.user.lastRoastDate = new Date();
       await req.user
         .save()
-        .catch((e) => console.error("[Roast] User save failed:", e.message));
+        .catch((e) =>
+          logger.error("Roast", "User save failed", { message: e.message }),
+        );
     }
 
     const responseData = { success: true, data };
@@ -147,7 +150,7 @@ router.get("/:username", optionalAuth, async (req, res) => {
         message: "GitHub rate limit hit. Try again in 60 seconds.",
       });
     }
-    console.error(`[RoastRoute] Error for ${username}:`, err.message);
+    logger.error("Roast", `Error for ${username}`, { message: err.message });
     return res.status(500).json({
       error: "SERVER_ERROR",
       message: "Something went wrong. Please try again.",

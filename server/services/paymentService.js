@@ -1,5 +1,6 @@
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
+const { logger } = require("../utils/logger");
 
 let _razorpay = null;
 function getRazorpay() {
@@ -29,7 +30,7 @@ const PLANS = {
 
 async function createOrder(planId, userId) {
   const plan = PLANS[planId];
-  console.log(plan, planId, userId, "createOrderfn");
+  logger.debug("Payment", "createOrder called", { planId });
   if (!plan) {
     const err = new Error(`Unknown plan: ${planId}`);
     err.statusCode = 400;
@@ -48,10 +49,9 @@ async function createOrder(planId, userId) {
       },
     });
   } catch (razorErr) {
-    console.error(
-      "[Razorpay] orders.create failed:",
-      razorErr?.error || razorErr?.message || razorErr,
-    );
+    logger.error("Payment", "Razorpay orders.create failed", {
+      error: razorErr?.error || razorErr?.message,
+    });
     throw razorErr;
   }
 
