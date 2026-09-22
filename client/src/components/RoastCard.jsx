@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createToast } from 'customizable-toast-notification'
 import StatsGrid from './StatsGrid'
 import CommitShame from './CommitShame'
 import ShareButtons from './ShareButtons'
@@ -12,10 +13,64 @@ export default function RoastCard({ data, onProClick }) {
   const [displayedText, setDisplayedText] = useState('')
   const [typingDone, setTypingDone] = useState(false)
   const [showCursor, setShowCursor] = useState(true)
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
   const intervalRef = useRef(null)
   const cursorTimerRef = useRef(null)
 
   const roastText = data.roast || ''
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
+  function handleVoiceRoast() {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      createToast({
+        type: 'warning',
+        message: 'Speech synthesis is not supported on this device/browser.',
+        position: 'top-center',
+        duration: 3500,
+      })
+      return
+    }
+
+    if (isPlayingAudio) {
+      window.speechSynthesis.cancel()
+      setIsPlayingAudio(false)
+      return
+    }
+
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(roastText)
+    utterance.rate = 0.92
+    utterance.pitch = 0.88
+
+    const voices = window.speechSynthesis.getVoices()
+    const englishVoice =
+      voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('UK') || v.name.includes('Daniel') || v.name.includes('Aaron'))) ||
+      voices.find(v => v.lang.startsWith('en'))
+
+    if (englishVoice) {
+      utterance.voice = englishVoice
+    }
+
+    utterance.onstart = () => setIsPlayingAudio(true)
+    utterance.onend = () => setIsPlayingAudio(false)
+    utterance.onerror = () => setIsPlayingAudio(false)
+
+    window.speechSynthesis.speak(utterance)
+
+    createToast({
+      type: 'info',
+      message: '🔊 Playing roast aloud... Turn up the volume!',
+      position: 'top-center',
+      duration: 3000,
+    })
+  }
 
   useEffect(() => {
     setDisplayedText('')
@@ -69,8 +124,24 @@ export default function RoastCard({ data, onProClick }) {
         {}
         <div className="card-header">
           <div className="profile-info">
-            <div className="avatar font-display">
-              {data.username[0].toUpperCase()}
+            <div className="avatar-box">
+              {}
+              <img
+                src={data.avatarUrl || `https://avatars.githubusercontent.com/${data.username}?s=96`}
+                alt={`@${data.username}`}
+                className="avatar-img"
+                crossOrigin="anonymous"
+                loading="eager"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextSibling) {
+                    e.currentTarget.nextSibling.style.display = 'flex';
+                  }
+                }}
+              />
+              <div className="avatar-fallback font-display" style={{ display: 'none' }}>
+                {data.username[0]?.toUpperCase() || '?'}
+              </div>
             </div>
             <div>
               <p className="profile-name">@{data.username}</p>
@@ -104,11 +175,54 @@ export default function RoastCard({ data, onProClick }) {
         <CommitShame commits={data.shameCommits} />
 
         {}
+        {data.bioContrast && data.bioContrast.reality && (
+          <div className="bio-contrast-box">
+            <div className="bio-contrast-header font-mono">
+              <span className="bio-contrast-tag">🎭 BIO VS REALITY</span>
+              <span className="bio-contrast-sub">Resume Claim vs Git Truth</span>
+            </div>
+            <div className="bio-contrast-grid">
+              <div className="bio-contrast-card bio-claimed">
+                <span className="bio-card-label font-mono">💼 Resume / Bio:</span>
+                <p className="bio-card-text font-mono">&ldquo;{data.bioContrast.claimed}&rdquo;</p>
+              </div>
+              <div className="bio-contrast-card bio-reality">
+                <span className="bio-card-label font-mono">🔍 Hard Truth:</span>
+                <p className="bio-card-text font-mono">{data.bioContrast.reality}</p>
+              </div>
+            </div>
+            {data.bioContrast.verdict && (
+              <div className="bio-verdict font-mono">
+                ⚖️ <span className="verdict-text">{data.bioContrast.verdict}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {}
         <div className="roast-text-block">
           <div className="roast-text-header">
-            <p className="roast-text-label font-mono">🔥 The Roast</p>
-            {data.roastSource === 'ai' && (
-              <span className="ai-badge font-mono">⚡ AI Roast</span>
+            <div className="roast-header-left">
+              <p className="roast-text-label font-mono">🔥 The Roast</p>
+              {data.roastSource === 'ai' && (
+                <span className="ai-badge font-mono">⚡ AI Roast</span>
+              )}
+            </div>
+            {typingDone && (
+              <button
+                type="button"
+                className={`voice-roast-btn font-mono ${isPlayingAudio ? 'voice-roast-btn--active' : ''}`}
+                onClick={handleVoiceRoast}
+                title={isPlayingAudio ? 'Stop reading' : 'Read roast aloud with sarcastic voice'}
+              >
+                {isPlayingAudio ? (
+                  <>
+                    <span className="voice-pulse" /> Stop Voice
+                  </>
+                ) : (
+                  <>🔊 Voice Roast</>
+                )}
+              </button>
             )}
           </div>
           <p className="roast-text">
@@ -120,9 +234,9 @@ export default function RoastCard({ data, onProClick }) {
         </div>
 
         {}
-        {typingDone && data.roastId && (
+        {typingDone && (data.roastId || data._id) && (
           <RoastReactions
-            roastId={data.roastId}
+            roastId={data.roastId || data._id}
             initialReactions={data.reactions || {}}
           />
         )}
@@ -138,10 +252,12 @@ export default function RoastCard({ data, onProClick }) {
       {typingDone && (
         <ShareButtons
           username={data.username}
-          roastId={data.roastId}
+          roastId={data.roastId || data._id}
           roastText={data.roast}
           isPro={data.isPro}
           onProClick={onProClick}
+          score={data.score}
+          grade={data.grade}
         />
       )}
 
@@ -164,18 +280,32 @@ export default function RoastCard({ data, onProClick }) {
           gap:         12px;
           min-width:   0;
         }
-        .avatar {
-          width:           44px;
-          height:          44px;
+        .avatar-box {
+          width:           46px;
+          height:          46px;
           border-radius:   50%;
           background:      #161616;
-          border:          2px solid rgba(255, 69, 0, 0.35);
+          border:          2px solid rgba(255, 69, 0, 0.4);
+          overflow:        hidden;
+          display:         flex;
+          align-items:     center;
+          justify-content: center;
+          flex-shrink:     0;
+        }
+        .avatar-img {
+          width:       100%;
+          height:      100%;
+          object-fit:  cover;
+          border-radius: 50%;
+        }
+        .avatar-fallback {
+          width:           100%;
+          height:          100%;
           display:         flex;
           align-items:     center;
           justify-content: center;
           font-size:       18px;
           color:           var(--fire);
-          flex-shrink:     0;
         }
         .profile-name {
           font-weight:   600;
@@ -215,6 +345,46 @@ export default function RoastCard({ data, onProClick }) {
           align-items:     center;
           justify-content: space-between;
           margin-bottom:   10px;
+          gap:             8px;
+        }
+        .roast-header-left {
+          display:     flex;
+          align-items: center;
+          gap:         8px;
+        }
+        .voice-roast-btn {
+          display:       flex;
+          align-items:   center;
+          gap:           6px;
+          padding:       4px 10px;
+          font-size:     11px;
+          background:    var(--bg-elevated);
+          border:        1px solid var(--border);
+          border-radius: var(--radius-sm);
+          color:         var(--text-secondary);
+          cursor:        pointer;
+          transition:    all 0.15s ease;
+        }
+        .voice-roast-btn:hover {
+          border-color: var(--fire);
+          color:        var(--fire);
+          background:   rgba(255, 69, 0, 0.08);
+        }
+        .voice-roast-btn--active {
+          border-color: var(--bad);
+          color:        var(--bad);
+          background:   rgba(255, 61, 61, 0.12);
+        }
+        .voice-pulse {
+          width:         6px;
+          height:        6px;
+          border-radius: 50%;
+          background:    var(--bad);
+          animation:     voiceBlink 0.8s infinite alternate;
+        }
+        @keyframes voiceBlink {
+          from { opacity: 0.3; transform: scale(0.8); }
+          to   { opacity: 1;   transform: scale(1.2); }
         }
         .roast-text-label {
           color:          var(--fire);
@@ -257,7 +427,72 @@ export default function RoastCard({ data, onProClick }) {
           border-top:     1px solid var(--border);
         }
 
+        .bio-contrast-box {
+          padding:       1.2rem 1.5rem;
+          border-bottom: 1px solid var(--border);
+          background:    rgba(0, 0, 0, 0.35);
+        }
+        .bio-contrast-header {
+          display:         flex;
+          align-items:     center;
+          justify-content: space-between;
+          margin-bottom:   10px;
+          flex-wrap:       wrap;
+          gap:             6px;
+        }
+        .bio-contrast-tag {
+          font-size:      10px;
+          color:          #ffaa55;
+          letter-spacing: 1.5px;
+          font-weight:    700;
+        }
+        .bio-contrast-sub {
+          font-size:      9px;
+          color:          var(--text-muted);
+        }
+        .bio-contrast-grid {
+          display:               grid;
+          grid-template-columns: 1fr 1fr;
+          gap:                   10px;
+        }
+        .bio-contrast-card {
+          padding:       10px 12px;
+          border-radius: var(--radius-sm);
+          border:        1px solid var(--border);
+          background:    rgba(255, 255, 255, 0.02);
+        }
+        .bio-claimed {
+          border-left: 2px solid #ffb700;
+        }
+        .bio-reality {
+          border-left: 2px solid var(--bad);
+        }
+        .bio-card-label {
+          font-size:     10px;
+          color:         var(--text-muted);
+          display:       block;
+          margin-bottom: 4px;
+        }
+        .bio-card-text {
+          font-size:   11px;
+          line-height: 1.5;
+          color:       var(--text-secondary);
+        }
+        .bio-verdict {
+          margin-top:    10px;
+          font-size:     11px;
+          padding:       6px 10px;
+          background:    rgba(255, 69, 0, 0.08);
+          border:        1px solid rgba(255, 69, 0, 0.2);
+          border-radius: var(--radius-sm);
+          color:         var(--text-primary);
+        }
+        .verdict-text {
+          color: #ffaa55;
+        }
+
         @media (max-width: 480px) {
+          .bio-contrast-grid { grid-template-columns: 1fr; }
           .card-header  { flex-direction: column; align-items: flex-start; }
           .score-block  { text-align: left; }
           .profile-name { max-width: 100%; }

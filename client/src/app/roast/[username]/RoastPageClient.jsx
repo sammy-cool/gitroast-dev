@@ -5,8 +5,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createToast } from 'customizable-toast-notification'
 import AnalyzingScreen from '@/components/AnalyzingScreen'
-import RoastCard from '@/components/RoastCard'
-import ProModal from '@/components/ProModal'
+import dynamic from 'next/dynamic';
+const RoastCard = dynamic(() => import('@/components/RoastCard'));
+const ProModal = dynamic(() => import('@/components/ProModal'), { ssr: false });
+import Breadcrumb from '@/components/Breadcrumb'
 import { getRoast } from '@/services/roastService'
 import { useAuth } from '@/context/AuthContext'
 
@@ -19,11 +21,12 @@ export default function RoastPageClient({ username }) {
   const router = useRouter()
   const { getToken, isPro } = useAuth()
 
-  const idempotencyKey = useRef(
-    `${username}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  )
+  const idempotencyKey = useRef('')
 
   useEffect(() => {
+    if (!idempotencyKey.current) {
+      idempotencyKey.current = `${username}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    }
     if (
       !username ||
       username.length > 39 ||
@@ -34,28 +37,29 @@ export default function RoastPageClient({ username }) {
       return
     }
 
-    const cacheKey = `gitroast_roast_${username}`
-    const cachedRoast = sessionStorage.getItem(cacheKey)
-
-    if (cachedRoast) {
-      try {
-        const parsed = JSON.parse(cachedRoast)
-        const cacheAge = Date.now() - parsed.cachedAt
-        if (cacheAge < 10 * 60 * 1000) {
-          setRoastData(parsed.data)
-          setView('result')
-          return
-        } else {
-          sessionStorage.removeItem(cacheKey)
-        }
-      } catch {
-        sessionStorage.removeItem(cacheKey)
-      }
-    }
-
     let cancelled = false
 
     async function fetchRoast() {
+      const cacheKey = `gitroast_roast_${username}`
+      const cachedRoast = sessionStorage.getItem(cacheKey)
+
+      if (cachedRoast) {
+        try {
+          const parsed = JSON.parse(cachedRoast)
+          const cacheAge = Date.now() - parsed.cachedAt
+          if (cacheAge < 10 * 60 * 1000) {
+            if (cancelled) return
+            setRoastData(parsed.data)
+            setView('result')
+            return
+          } else {
+            sessionStorage.removeItem(cacheKey)
+          }
+        } catch {
+          sessionStorage.removeItem(cacheKey)
+        }
+      }
+
       try {
         const token = getToken()
         const intensity = sessionStorage.getItem('gitroast_intensity') || 'savage'
@@ -81,6 +85,18 @@ export default function RoastPageClient({ username }) {
 
       } catch (err) {
         if (cancelled) return
+
+        if (err.code === 'ORGANIZATION_NOT_SUPPORTED') {
+          createToast({
+            type: 'error',
+            message: err.message || `@${username} is an Organization. GitRoast roasts individual developers!`,
+            position: 'top-center',
+            duration: 5000,
+            showCloseButton: true,
+          })
+          router.push('/')
+          return
+        }
 
         if (err.code === 'USER_NOT_FOUND') {
           createToast({
@@ -110,10 +126,38 @@ export default function RoastPageClient({ username }) {
             type: 'warning',
             message: isOurLimit
               ? `⏱ Too many requests. Try again in ${seconds}.`
-              : `GitHub rate limit hit. Try again in ${seconds}.`,
+              : `GitHub public limit hit! Log in via GitHub to unlock your dedicated quota.`,
             position: 'top-center',
             duration: Math.min(retryAfter * 1000, 8000),
             showCloseButton: true,
+            cta: {
+              label: 'Login via GitHub ↗',
+              onClick: () => {
+                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                window.location.href = `${apiBase}/api/auth/github`
+              },
+              autoClose: true,
+            },
+          })
+          router.push('/')
+          return
+        }
+
+        if (err.code === 'CAPTCHA_REQUIRED' || err.code === 'CAPTCHA_FAILED') {
+          createToast({
+            type: 'warning',
+            message: err.message || 'Bot verification blocked by browser shield. Please log in with GitHub to roast!',
+            position: 'top-center',
+            duration: 8000,
+            showCloseButton: true,
+            cta: {
+              label: 'Login via GitHub ↗',
+              onClick: () => {
+                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                window.location.href = `${apiBase}/api/auth/github`
+              },
+              autoClose: true,
+            },
           })
           router.push('/')
           return
@@ -140,7 +184,7 @@ export default function RoastPageClient({ username }) {
 
     fetchRoast()
     return () => { cancelled = true }
-  }, [username, router])
+  }, [username, router, getToken])
 
   function handleRoastAnother() {
     sessionStorage.removeItem(`gitroast_roast_${username}`)
@@ -168,6 +212,16 @@ export default function RoastPageClient({ username }) {
                 ← Roast Another
               </button>
             </div>
+          </div>
+
+          <div className="breadcrumb-wrap">
+            <Breadcrumb
+              items={[
+                { label: 'Home', href: '/' },
+                { label: 'Roast', href: '/' },
+                { label: `@${roastData.username}` },
+              ]}
+            />
           </div>
 
           <RoastCard
@@ -209,6 +263,11 @@ export default function RoastPageClient({ username }) {
             align-items:     center;
             width:           100%;
             max-width:       580px;
+          }
+          .breadcrumb-wrap {
+            width:      100%;
+            max-width:  580px;
+            margin-top: -0.5rem;
           }
           .nav-logo      { font-size: 22px; }
           .upsell-card {

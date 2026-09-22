@@ -1,268 +1,102 @@
-"use client";
+import { Suspense } from 'react';
+import LeaderboardClient, { LeaderboardSkeleton } from './LeaderboardClient';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import LeaderboardTable from "@/components/LeaderboardTable";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://gitroast.dev';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+export const metadata = {
+  title: 'Wall of Shame 🏆 — Global GitHub Roast Leaderboard | GitRoast',
+  description:
+    'The most brutally roasted GitHub profiles in the world. Explore the lowest developer scores, commit shame, and global rankings.',
+  keywords: [
+    'github roast leaderboard',
+    'wall of shame github',
+    'worst github profiles',
+    'github roast ranking',
+    'developer shame leaderboard',
+  ],
+  alternates: {
+    canonical: `${SITE_URL}/leaderboard`,
+  },
+  openGraph: {
+    title: 'Wall of Shame 🏆 — Global GitHub Roast Leaderboard',
+    description:
+      'The most brutally roasted GitHub profiles. See who got destroyed the worst.',
+    url: `${SITE_URL}/leaderboard`,
+    siteName: 'GitRoast',
+    type: 'website',
+    images: [
+      {
+        url: '/og-default.png',
+        width: 1200,
+        height: 630,
+        alt: 'GitRoast Wall of Shame Global Leaderboard',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Wall of Shame 🏆 | GitRoast',
+    description: 'The most brutally roasted GitHub profiles. Globally.',
+    images: ['/og-default.png'],
+    creator: '@gitroast',
+  },
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Wall of Shame — Global GitHub Roast Leaderboard',
+  url: `${SITE_URL}/leaderboard`,
+  description:
+    'Global ranking of the most roasted GitHub developers, showcasing low scores, commit habits, and developer grades.',
+  breadcrumb: {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: SITE_URL,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Wall of Shame',
+        item: `${SITE_URL}/leaderboard`,
+      },
+    ],
+  },
+};
 
 export default function LeaderboardPage() {
-    const [entries, setEntries] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(false);
-    const router = useRouter();
-
-    useEffect(() => {
-        fetch(`${API_BASE}/api/history/leaderboard/worst`)
-            .then((r) => r.json())
-            .then((d) => setEntries(d.leaderboard || []))
-            .catch(() => {
-                setEntries([]);
-                setError(true);
-            })
-            .finally(() => setLoading(false));
-    }, []);
-
-    return (
-        <main className="lb-page">
-            {}
-            <div className="lb-nav">
-                <div className="font-display nav-logo text-fire">GITROAST 🔥</div>
-                <button className="btn btn-ghost" onClick={() => router.push("/")}>
-                    ← Home
-                </button>
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <Suspense
+        fallback={
+          <main
+            style={{
+              minHeight: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '1.5rem 1rem 6.5rem',
+              maxWidth: '640px',
+              margin: '0 auto',
+              width: '100%',
+            }}
+          >
+            <div className="card" style={{ width: '100%', overflow: 'hidden' }}>
+              <LeaderboardSkeleton />
             </div>
-
-            {}
-            <div className="lb-title-block">
-                <h1 className="font-display lb-title text-fire">🏆 Wall of Shame</h1>
-                <p className="font-mono lb-sub">
-                    The most brutally roasted GitHub profiles. Globally.
-                </p>
-            </div>
-
-            {}
-            <div className="card lb-card">
-                {loading ? (
-                    <div className="lb-skeleton">
-                        {}
-                        <div className="skel-header-row">
-                            <div className="skel skel-col-rank" />
-                            <div className="skel skel-col-user" />
-                            <div className="skel skel-col-score" />
-                            <div className="skel skel-col-count" />
-                        </div>
-
-                        {}
-                        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                            <div key={i} className="skel-row">
-                                {}
-                                <div className="skel skel-rank" />
-                                {}
-                                <div className="skel-user-col">
-                                    <div className="skel skel-avatar" />
-                                    <div className="skel skel-username" />
-                                </div>
-                                {}
-                                <div className="skel skel-score" />
-                                {}
-                                <div className="skel skel-count" />
-                            </div>
-                        ))}
-                    </div>
-                ) : error ? (
-                    <div className="lb-error">
-                        <p
-                            className="font-mono"
-                            style={{ color: "var(--bad)", marginBottom: "1rem" }}
-                        >
-                            ❌ Could not load leaderboard. Check your connection.
-                        </p>
-                        <button
-                            className="btn btn-ghost"
-                            onClick={() => window.location.reload()}
-                        >
-                            Try Again
-                        </button>
-                    </div>
-                ) : (
-                    <LeaderboardTable entries={entries} />
-                )}
-            </div>
-
-            {}
-            <button
-                className="btn btn-primary lb-cta"
-                onClick={() => router.push("/")}
-            >
-                🔥 Add Yourself to the List
-            </button>
-
-            <style jsx>{`
-        .lb-page {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 1.5rem 1rem 3rem;
-          gap: 1.25rem;
-          max-width: 620px;
-          margin: 0 auto;
+          </main>
         }
-
-        /* Nav */
-        .lb-nav {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          width: 100%;
-        }
-        .nav-logo {
-          font-size: 22px;
-        }
-
-        /* Header */
-        .lb-title-block {
-          text-align: center;
-        }
-        .lb-title {
-          font-size: clamp(36px, 10vw, 56px);
-          line-height: 1;
-        }
-        .lb-sub {
-          color: var(--text-secondary);
-          font-size: 13px;
-          margin-top: 8px;
-        }
-
-        /* Card */
-        .lb-card {
-          width: 100%;
-          overflow: hidden;
-        }
-
-        /* ── Skeleton ── */
-        .lb-skeleton {
-          display: flex;
-          flex-direction: column;
-          width: 100%;
-        }
-
-        /* WHY header row matches LeaderboardTable column layout:
-           rank | username | score | count
-           same grid so content drops in with zero shift */
-        .skel-header-row {
-          display: grid;
-          grid-template-columns: 48px 1fr 80px 64px;
-          gap: 1rem;
-          padding: 0.75rem 1.25rem;
-          border-bottom: 1px solid var(--border);
-          align-items: center;
-        }
-        .skel-row {
-          display: grid;
-          grid-template-columns: 48px 1fr 80px 64px;
-          gap: 1rem;
-          padding: 1rem 1.25rem;
-          border-bottom: 1px solid var(--border);
-          align-items: center;
-        }
-        .skel-row:last-child {
-          border-bottom: none;
-        }
-
-        /* Avatar + username grouped in one cell */
-        .skel-user-col {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        /* WHY shimmer animation:
-           moves left→right giving sense of active loading
-           colors use CSS vars → matches dark theme perfectly */
-        .skel {
-          background: linear-gradient(
-            90deg,
-            var(--bg-elevated) 25%,
-            var(--border-hover, #2e2e2e) 50%,
-            var(--bg-elevated) 75%
-          );
-          background-size: 200% 100%;
-          animation: skelShimmer 1.5s ease-in-out infinite;
-          border-radius: var(--radius-sm);
-        }
-
-        /* WHY each size matches real LeaderboardTable cell:
-           rank   → small number
-           avatar → round image
-           username → medium text
-           score  → bold number badge
-           count  → small number */
-        .skel-col-rank {
-          height: 10px;
-          width: 20px;
-        }
-        .skel-col-user {
-          height: 10px;
-          width: 80px;
-        }
-        .skel-col-score {
-          height: 10px;
-          width: 40px;
-        }
-        .skel-col-count {
-          height: 10px;
-          width: 30px;
-        }
-        .skel-rank {
-          height: 20px;
-          width: 28px;
-        }
-        .skel-avatar {
-          width: 32px;
-          height: 32px;
-          flex-shrink: 0;
-          border-radius: 50%; /* WHY: avatar is circular */
-        }
-        .skel-username {
-          height: 12px;
-          width: 120px;
-        }
-        .skel-score {
-          height: 28px;
-          width: 52px;
-          border-radius: var(--radius-md);
-        }
-        .skel-count {
-          height: 12px;
-          width: 28px;
-        }
-
-        @keyframes skelShimmer {
-          0% {
-            background-position: 200% 0;
-          }
-          100% {
-            background-position: -200% 0;
-          }
-        }
-
-        /* Error state */
-        .lb-error {
-          padding: 2rem;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-        }
-
-        /* CTA */
-        .lb-cta {
-          padding: 13px 28px;
-          font-size: 15px;
-        }
-      `}</style>
-        </main>
-    );
+      >
+        <LeaderboardClient />
+      </Suspense>
+    </>
+  );
 }

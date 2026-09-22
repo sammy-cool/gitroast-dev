@@ -29,6 +29,9 @@ const ERROR_MAP = {
 };
 
 function errorHandler(err, req, res, next) {
+  if (res.headersSent) {
+    return next(err);
+  }
   logger.error("ErrorHandler", `${req.method} ${req.path}`, {
     name: err.name,
     message: err.message,

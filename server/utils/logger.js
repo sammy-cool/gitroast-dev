@@ -1,3 +1,13 @@
+const { randomUUID } = require("crypto");
+const os = require("os");
+
+const SERVICE_META = {
+  service: "gitroast-api",
+  hostname: os.hostname(),
+  pid: process.pid,
+  nodeVersion: process.version,
+};
+
 const COLORS = {
   reset: "\x1b[0m",
   red: "\x1b[31m",
@@ -7,27 +17,32 @@ const COLORS = {
   magenta: "\x1b[35m",
   grey: "\x1b[90m",
   white: "\x1b[37m",
+  bold: "\x1b[1m",
 };
 
 const LEVELS = {
-  INFO: { emoji: "✅", color: COLORS.green, label: "INFO" },
-  WARN: { emoji: "⚠️", color: COLORS.yellow, label: "WARN" },
-  ERROR: { emoji: "🔴", color: COLORS.red, label: "ERROR" },
-  DEBUG: { emoji: "🔍", color: COLORS.cyan, label: "DEBUG" },
-  HTTP: { emoji: "🌐", color: COLORS.magenta, label: "HTTP" },
+  ERROR: { severity: 3, emoji: "🔴", color: COLORS.red, label: "ERROR" },
+  WARN: { severity: 4, emoji: "⚠️", color: COLORS.yellow, label: "WARN" },
+  INFO: { severity: 6, emoji: "✅", color: COLORS.green, label: "INFO" },
+  HTTP: { severity: 6, emoji: "🌐", color: COLORS.magenta, label: "HTTP" },
+  DEBUG: { severity: 7, emoji: "🔍", color: COLORS.cyan, label: "DEBUG" },
 };
+
+const IS_PROD = process.env.NODE_ENV === "production";
+const IS_TEST = process.env.NODE_ENV === "test";
 
 function format(level, context, message, meta = {}) {
   const ts = new Date().toISOString();
-  const isProd = process.env.NODE_ENV === "production";
   const levelData = LEVELS[level] || LEVELS.INFO;
 
-  if (isProd) {
+  if (IS_PROD) {
     return JSON.stringify({
       ts,
       level: levelData.label,
+      severity: levelData.severity,
       context,
       message,
+      ...SERVICE_META,
       ...meta,
     });
   }
@@ -37,10 +52,10 @@ function format(level, context, message, meta = {}) {
   const reset = COLORS.reset;
   const grey = COLORS.grey;
   const metaStr = Object.keys(meta).length
-    ? ` ${grey}${JSON.stringify(meta)}${reset}`
+    ? " " + grey + JSON.stringify(meta) + reset
     : "";
 
-  return `${grey}${ts}${reset} ${emoji} ${color}[${levelData.label}]${reset} ${color}[${context}]${reset} ${message}${metaStr}`;
+  return grey + ts + reset + " " + emoji + " " + color + "[" + levelData.label + "]" + reset + " " + color + "[" + context + "]" + reset + " " + message + metaStr;
 }
 
 function log(level, context, message, meta = {}) {
@@ -57,32 +72,70 @@ const logger = {
   warn: (ctx, msg, meta) => log("WARN", ctx, msg, meta),
   error: (ctx, msg, meta) => log("ERROR", ctx, msg, meta),
   debug: (ctx, msg, meta) => {
-    if (process.env.NODE_ENV !== "production") {
+    if (!IS_PROD) {
       log("DEBUG", ctx, msg, meta);
     }
   },
+  child: (defaults = {}) => ({
+    info: (ctx, msg, meta) => log("INFO", ctx, msg, { ...defaults, ...meta }),
+    warn: (ctx, msg, meta) => log("WARN", ctx, msg, { ...defaults, ...meta }),
+    error: (ctx, msg, meta) => log("ERROR", ctx, msg, { ...defaults, ...meta }),
+    debug: (ctx, msg, meta) => {
+      if (!IS_PROD) {
+        log("DEBUG", ctx, msg, { ...defaults, ...meta });
+      }
+    },
+  }),
 };
 
+
+const SUPPRESSED_PATHS = new Set(["/health", "/api/health"]);
+const healthPingTracker = { count: 0, since: Date.now() };
+
+setInterval(() => {
+  if (healthPingTracker.count > 0) {
+    logger.info("Health", `🏥 Health check summary: ${healthPingTracker.count} pings received (all OK) in last 5m`);
+    healthPingTracker.count = 0;
+  }
+  healthPingTracker.since = Date.now();
+}, 5 * 60 * 1000).unref();
+
 function logRequest(req, res, next) {
+  if (SUPPRESSED_PATHS.has(req.path)) {
+    healthPingTracker.count++;
+    return next();
+  }
+
   const start = Date.now();
 
-  const originalJson = res.json.bind(res);
-  res.json = function (body) {
+  const requestId =
+    req.headers["x-request-id"] || randomUUID();
+  req.id = requestId;
+
+  res.setHeader("X-Request-Id", requestId);
+
+  res.on("finish", () => {
     const duration = Date.now() - start;
     const status = res.statusCode;
 
     const level = status >= 500 ? "ERROR" : status >= 400 ? "WARN" : "HTTP";
 
-    log(level, "HTTP", `${req.method} ${req.path}`, {
+    const ip = req.ip || req.socket?.remoteAddress || "unknown";
+
+    const contentLength = res.getHeader("content-length");
+
+    log(level, "HTTP", `${req.method} ${req.originalUrl}`, {
       status,
       ms: duration,
-      ip:
-        req.headers["x-forwarded-for"]?.split(",")[0] ||
-        req.socket.remoteAddress,
+      ip,
+      requestId,
+      route: req.route?.path || undefined,
+      bytes: contentLength ? parseInt(contentLength, 10) : undefined,
+      userAgent: IS_PROD
+        ? (req.headers["user-agent"] || "").slice(0, 120) || undefined
+        : undefined,
     });
-
-    return originalJson(body);
-  };
+  });
 
   next();
 }
@@ -109,7 +162,11 @@ function attachProcessHandlers() {
     process.exit(0);
   });
 
-  logger.info("Process", "✅ Process error handlers attached");
+  logger.info("Process", "✅ Process error handlers attached", {
+    ...SERVICE_META,
+    env: process.env.NODE_ENV || "development",
+    uptime: Math.round(process.uptime()) + "s",
+  });
 }
 
 module.exports = { logger, logRequest, attachProcessHandlers };

@@ -14,7 +14,7 @@ const PLAN_DISPLAY = {
 }
 
 export default function PaymentFlow({ planId, onClose }) {
-    const { getToken, user } = useAuth()
+    const { getToken, user, refreshUser } = useAuth()
     const [status, setStatus] = useState('sdk_loading')
     const [errorMsg, setErrorMsg] = useState('')
     const [planInfo, setPlanInfo] = useState(null)
@@ -145,6 +145,10 @@ export default function PaymentFlow({ planId, onClose }) {
 
             const json = await res.json()
             if (!json.success) throw new Error(json.message)
+
+            if (refreshUser) {
+                await refreshUser()
+            }
 
             setStatus('done')
 

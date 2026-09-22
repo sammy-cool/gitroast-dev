@@ -1,6 +1,7 @@
 node_modules/
 client/node_modules/
 server/node_modules/
+storage
 
 .env
 .env.local
@@ -16,3 +17,5 @@ npm-debug.log*
 Thumbs.db
 
 .vscode/
+
+AGENTS.md

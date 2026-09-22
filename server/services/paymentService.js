@@ -59,6 +59,9 @@ async function createOrder(planId, userId) {
 }
 
 function verifyPayment({ orderId, paymentId, signature }) {
+  if (!orderId || !paymentId || !signature || !process.env.RAZORPAY_KEY_SECRET) {
+    return false;
+  }
   const body = `${orderId}|${paymentId}`;
   const expected = crypto
     .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -75,4 +78,22 @@ function verifyPayment({ orderId, paymentId, signature }) {
   }
 }
 
-module.exports = { PLANS, createOrder, verifyPayment };
+function verifyWebhookSignature(rawBody, signature, webhookSecret) {
+  if (!rawBody || !signature || !webhookSecret) return false;
+
+  const expected = crypto
+    .createHmac("sha256", webhookSecret)
+    .update(rawBody)
+    .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(signature),
+    );
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { PLANS, createOrder, verifyPayment, verifyWebhookSignature };

@@ -66,7 +66,7 @@ No quotes. No intro.`;
 async function runBattle(username1, username2, token1 = null) {
   const [data1, data2] = await Promise.all([
     analyzeProfile(username1, token1),
-    analyzeProfile(username2, null),
+    analyzeProfile(username2, token1),
   ]);
 
   const roast1 = generateRoast(data1, "savage");
@@ -98,8 +98,22 @@ async function runBattle(username1, username2, token1 = null) {
     roast1,
     roast2,
     battleRoast,
-    stats1: data1.stats,
-    stats2: data2.stats,
+    stats1: {
+      totalRepos: data1.totalRepos ?? data1.stats?.totalRepos ?? 0,
+      abandonedRepos: data1.repoAnalysis?.abandonedCount ?? 0,
+      totalStars: data1._raw?.totalStars ?? 0,
+      topLanguage: data1.repoAnalysis?.topLanguage || "Nothing",
+      commitQuality: data1.commitAnalysis?.qualityScore ?? 0,
+      joinYear: data1.joinYear ?? 2020,
+    },
+    stats2: {
+      totalRepos: data2.totalRepos ?? data2.stats?.totalRepos ?? 0,
+      abandonedRepos: data2.repoAnalysis?.abandonedCount ?? 0,
+      totalStars: data2._raw?.totalStars ?? 0,
+      topLanguage: data2.repoAnalysis?.topLanguage || "Nothing",
+      commitQuality: data2.commitAnalysis?.qualityScore ?? 0,
+      joinYear: data2.joinYear ?? 2020,
+    },
   };
 }
 

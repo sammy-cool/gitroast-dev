@@ -6,6 +6,7 @@ import {
     useState,
     useEffect,
     useCallback,
+    useMemo,
 } from 'react'
 
 const AuthContext = createContext(null)
@@ -16,15 +17,6 @@ const TOKEN_KEY = 'gitroast_token'
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null)
     const [loading, setLoading] = useState(true)
-
-    useEffect(() => {
-        const token = localStorage.getItem(TOKEN_KEY)
-        if (token) {
-            fetchMe(token)
-        } else {
-            setLoading(false)
-        }
-    }, [])
 
     const fetchMe = useCallback(async (token) => {
         try {
@@ -47,6 +39,23 @@ export function AuthProvider({ children }) {
             setLoading(false)
         }
     }, [])
+
+    useEffect(() => {
+        const token = localStorage.getItem(TOKEN_KEY)
+        if (token) {
+            fetchMe(token)
+        } else {
+            setLoading(false)
+        }
+    }, [fetchMe])
+
+    const refreshUser = useCallback(async () => {
+        const token = localStorage.getItem(TOKEN_KEY)
+        if (token) {
+            return await fetchMe(token)
+        }
+        return null
+    }, [fetchMe])
 
     const loginWithToken = useCallback((token) => {
         localStorage.setItem(TOKEN_KEY, token)
@@ -74,7 +83,7 @@ export function AuthProvider({ children }) {
         window.location.href = `${API_BASE}/api/auth/github`
     }, [])
 
-    const value = {
+    const value = useMemo(() => ({
         user,
         loading,
         isLoggedIn: !!user,
@@ -83,7 +92,8 @@ export function AuthProvider({ children }) {
         loginWithToken,
         getToken,
         logout,
-    }
+        refreshUser,
+    }), [user, loading, loginWithGitHub, loginWithToken, getToken, logout, refreshUser]);
 
     return (
         <AuthContext.Provider value={value}>

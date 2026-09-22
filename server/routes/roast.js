@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const { analyzeProfile } = require("../services/githubService");
+const { analyzeProfile, analyzeWrapped } = require("../services/githubService");
+const { analyzeRepository } = require("../services/repoRoastService");
 const { generateRoast } = require("../services/roastEngine");
 const { generateAIRoast } = require("../services/aiService");
 const { optionalAuth, requirePro } = require("../middleware/auth");
+const { verifyCaptcha } = require("../middleware/captcha");
 const Roast = require("../models/Roast");
 const { logger } = require("../utils/logger");
 
@@ -13,18 +15,125 @@ setInterval(() => {
   for (const [key, val] of processedKeys.entries()) {
     if (now - val.time > 60000) processedKeys.delete(key);
   }
-}, 60000);
+}, 60000).unref();
+
+router.get("/feed", async (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=15, stale-while-revalidate=30");
+  try {
+    const feed = await Roast.find({})
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select("username score grade intensity createdAt")
+      .lean();
+
+    return res.status(200).json({ success: true, feed });
+  } catch (err) {
+    return res.status(200).json({ success: true, feed: [] });
+  }
+});
 
 router.get("/stats", async (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
   try {
-    const count = await Roast.countDocuments();
+    const count = await Roast.estimatedDocumentCount();
     return res.status(200).json({ success: true, totalRoasts: count });
   } catch {
     return res.status(200).json({ success: true, totalRoasts: 0 });
   }
 });
 
-router.get("/:username", optionalAuth, async (req, res) => {
+router.get("/:username/wrapped", optionalAuth, verifyCaptcha, async (req, res) => {
+  const { username } = req.params;
+  const year = parseInt(req.query.year, 10) || 2025;
+
+  if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
+    return res.status(400).json({
+      error: "INVALID_USERNAME",
+      message: "Invalid GitHub username format.",
+    });
+  }
+
+  try {
+    const githubToken = req.user?.githubAccessToken || null;
+    const authUsername = req.user?.username || null;
+    const isPro = req.user?.isPro || false;
+    const wrapped = await analyzeWrapped(
+      username,
+      year,
+      githubToken,
+      authUsername,
+      isPro,
+    );
+    return res.status(200).json({ success: true, wrapped });
+  } catch (err) {
+    if (err.message === "USER_NOT_FOUND") {
+      return res.status(404).json({
+        error: "USER_NOT_FOUND",
+        message: `GitHub user "@${username}" does not exist.`,
+      });
+    }
+    if (err.message === "RATE_LIMIT_EXCEEDED") {
+      return res.status(429).json({
+        error: "RATE_LIMIT_EXCEEDED",
+        message: "GitHub rate limit hit. Try again in 60 seconds.",
+      });
+    }
+    logger.error("Wrapped", `Error for ${username}`, { message: err.message });
+    return res.status(500).json({
+      error: "SERVER_ERROR",
+      message: "Failed to generate Wrapped report.",
+    });
+  }
+});
+
+router.get("/repo/:owner/:repo", optionalAuth, verifyCaptcha, async (req, res) => {
+  const { owner, repo } = req.params;
+  const isPro = req.user?.isPro || false;
+  const rawIntensity = req.query.intensity || "savage";
+  const intensity = ["mild", "savage", "nuclear"].includes(rawIntensity)
+    ? rawIntensity
+    : "savage";
+
+  if (intensity === "nuclear" && !isPro) {
+    return res.status(403).json({
+      error: "PRO_REQUIRED",
+      message: "Nuclear intensity is exclusively for GitRoast Pro members. Upgrade to unlock maximum destruction.",
+    });
+  }
+
+  if (!owner || !repo || owner.length > 39 || repo.length > 100) {
+    return res.status(400).json({
+      error: "INVALID_REPO",
+      message: "Invalid repository owner or name.",
+    });
+  }
+
+  try {
+    const userToken = req.user?.githubAccessToken || null;
+    const repoAnalysis = await analyzeRepository(owner, repo, userToken, isPro, intensity);
+    return res.status(200).json({ success: true, data: repoAnalysis });
+  } catch (err) {
+    if (err.message === "REPO_NOT_FOUND" || err.code === "REPO_NOT_FOUND") {
+      return res.status(404).json({
+        error: "REPO_NOT_FOUND",
+        message: `Repository "${owner}/${repo}" was not found or is private.`,
+      });
+    }
+    if (err.message === "RATE_LIMIT_EXCEEDED" || err.code === "RATE_LIMIT_EXCEEDED") {
+      return res.status(429).json({
+        error: "RATE_LIMIT_EXCEEDED",
+        message: "GitHub rate limit hit. Try again in 60 seconds.",
+      });
+    }
+    logger.error("RepoRoast", `Failed for ${owner}/${repo}`, { message: err.message });
+    return res.status(500).json({
+      error: "SERVER_ERROR",
+      message: "Failed to analyze repository.",
+    });
+  }
+});
+
+router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
   const { username } = req.params;
   const isPro = req.user?.isPro || false;
   const idempotencyKey = req.headers["x-idempotency-key"];
@@ -64,8 +173,9 @@ router.get("/:username", optionalAuth, async (req, res) => {
   }
 
   try {
-    const githubToken = isPro ? req.user?.githubAccessToken : null;
-    const data = await analyzeProfile(username, githubToken);
+    const githubToken = req.user?.githubAccessToken || null;
+    const authUsername = req.user?.username || null;
+    const data = await analyzeProfile(username, githubToken, authUsername, isPro);
 
     let roast = null;
     let roastSource = "rules";
@@ -110,9 +220,15 @@ router.get("/:username", optionalAuth, async (req, res) => {
         },
         stats: data.stats,
         shameCommits: data.shameCommits,
+        bioContrast: data.bioContrast || {},
         isPro,
       });
       data.roastId = savedRoast._id;
+      data.reactions = savedRoast.reactions || {
+        relatable: 0,
+        destroyed: 0,
+        savage: 0,
+      };
     } catch (dbErr) {
       logger.error("Roast", "DB save failed", { message: dbErr.message });
     }
@@ -130,6 +246,10 @@ router.get("/:username", optionalAuth, async (req, res) => {
     const responseData = { success: true, data };
 
     if (idempotencyKey) {
+      if (processedKeys.size >= 1000) {
+        const firstKey = processedKeys.keys().next().value;
+        processedKeys.delete(firstKey);
+      }
       processedKeys.set(idempotencyKey, {
         response: responseData,
         time: Date.now(),
@@ -138,6 +258,12 @@ router.get("/:username", optionalAuth, async (req, res) => {
 
     return res.status(200).json(responseData);
   } catch (err) {
+    if (err.message === "ORGANIZATION_NOT_SUPPORTED" || err.code === "ORGANIZATION_NOT_SUPPORTED") {
+      return res.status(400).json({
+        error: "ORGANIZATION_NOT_SUPPORTED",
+        message: `@${username} is an Organization, not an individual developer. GitRoast only roasts humans (for now)!`,
+      });
+    }
     if (err.message === "USER_NOT_FOUND") {
       return res.status(404).json({
         error: "USER_NOT_FOUND",
@@ -148,6 +274,7 @@ router.get("/:username", optionalAuth, async (req, res) => {
       return res.status(429).json({
         error: "RATE_LIMIT_EXCEEDED",
         message: "GitHub rate limit hit. Try again in 60 seconds.",
+        retryAfter: 60,
       });
     }
     logger.error("Roast", `Error for ${username}`, { message: err.message });

@@ -82,6 +82,20 @@ export default function RootLayout({ children }) {
         ${plusJakartaSans.variable}
       `}
     >
+      <head>
+        <link
+          rel="preconnect"
+          href="https://avatars.githubusercontent.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="dns-prefetch" href="https://avatars.githubusercontent.com" />
+        <link
+          rel="sitemap"
+          type="application/xml"
+          title="Sitemap"
+          href="/sitemap.xml"
+        />
+      </head>
       <body>
         {}
         <ToastConfig />
@@ -99,6 +113,14 @@ export default function RootLayout({ children }) {
 
         {}
         <Footer />
+
+        {}
+        {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && (
+          <Script
+            src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`}
+            strategy="lazyOnload"
+          />
+        )}
 
         {}
         <Script

@@ -68,6 +68,13 @@ const roastSchema = new mongoose.Schema(
 
     shameCommits: [String],
 
+    bioContrast: {
+      bio: { type: String, default: "" },
+      claimed: { type: String, default: "" },
+      reality: { type: String, default: "" },
+      verdict: { type: String, default: "" },
+    },
+
     isPro: {
       type: Boolean,
       default: false,
@@ -92,12 +99,31 @@ const roastSchema = new mongoose.Schema(
 roastSchema.index({ username: 1, createdAt: -1 });
 roastSchema.index({ score: 1, createdAt: -1 });
 
+roastSchema.index({ createdAt: -1 });
+
+roastSchema.index({ "reactions.savage": -1, "reactions.destroyed": -1, createdAt: -1 });
+
 roastSchema.statics.getHistory = function (username, limit = 10) {
-  return this.find({ username }).sort({ createdAt: -1 }).limit(limit);
+  return this.find({ username }).sort({ createdAt: -1 }).limit(limit).lean();
 };
 
-roastSchema.statics.getLeaderboard = function (limit = 10) {
-  return this.aggregate([
+roastSchema.statics.getLeaderboard = async function (options = {}) {
+  let page = 1;
+  let limit = 10;
+  let legacyMode = false;
+
+  if (typeof options === "number") {
+    limit = options;
+    legacyMode = true;
+  } else if (options && typeof options === "object") {
+    page = Math.max(1, parseInt(options.page, 10) || 1);
+    limit = Math.min(50, Math.max(1, parseInt(options.limit, 10) || 10));
+  }
+
+  const skip = (page - 1) * limit;
+
+  const result = await this.aggregate([
+    { $project: { username: 1, score: 1 } },
     {
       $group: {
         _id: "$username",
@@ -105,9 +131,37 @@ roastSchema.statics.getLeaderboard = function (limit = 10) {
         roastCount: { $sum: 1 },
       },
     },
-    { $sort: { bestScore: 1 } },
-    { $limit: limit },
+    {
+      $facet: {
+        metadata: [{ $count: "total" }],
+        data: [
+          { $sort: { bestScore: 1 } },
+          { $skip: skip },
+          { $limit: limit },
+        ],
+      },
+    },
   ]);
+
+  const total = result[0]?.metadata?.[0]?.total || 0;
+  const entries = result[0]?.data || [];
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  if (legacyMode) {
+    return entries;
+  }
+
+  return {
+    entries,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    },
+  };
 };
 
 roastSchema.statics.incrementShare = function (id) {

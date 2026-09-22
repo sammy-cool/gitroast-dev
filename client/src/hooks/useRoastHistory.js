@@ -38,11 +38,11 @@ export function useRoastHistory(username) {
         : null
 
     const bestScore = history.length > 0
-        ? Math.min(...history.map(r => r.score))
+        ? Math.max(...history.map(r => r.score))
         : null
 
     const worstScore = history.length > 0
-        ? Math.max(...history.map(r => r.score))
+        ? Math.min(...history.map(r => r.score))
         : null
 
     const avgScore = history.length > 0

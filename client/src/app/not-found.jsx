@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 
 export default function NotFound() {
   return (
@@ -23,13 +24,12 @@ export default function NotFound() {
         </p>
 
         <div className="nf-actions">
-          {}
-          <a href="/" className="btn btn-primary nf-btn">
+          <Link href="/" className="btn btn-primary nf-btn">
             🔥 Roast Someone Instead
-          </a>
-          <a href="/leaderboard" className="btn btn-ghost nf-btn-ghost">
+          </Link>
+          <Link href="/leaderboard" className="btn btn-ghost nf-btn-ghost">
             🏆 Wall of Shame
-          </a>
+          </Link>
         </div>
 
       </div>
@@ -85,8 +85,8 @@ export default function NotFound() {
           width:          100%;
           margin-top:     0.5rem;
         }
-        .nf-btn       { width: 100%; padding: 13px; font-size: 15px; text-align: center; }
-        .nf-btn-ghost { width: 100%; text-align: center; }
+        .nf-actions :global(.nf-btn)       { width: 100%; padding: 13px; font-size: 15px; text-align: center; text-decoration: none; }
+        .nf-actions :global(.nf-btn-ghost) { width: 100%; text-align: center; text-decoration: none; }
       `}</style>
     </main>
   )

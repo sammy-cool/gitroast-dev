@@ -1,10 +1,13 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createToast } from 'customizable-toast-notification'
 import { useRoastHistory } from '@/hooks/useRoastHistory'
 import HistoryCard from '@/components/HistoryCard'
 import ScoreChart from '@/components/ScoreChart'
 import MonthlyComparison from '@/components/MonthlyComparison'
+import Breadcrumb from '@/components/Breadcrumb'
 
 export default function HistoryPageClient({ username }) {
     const router = useRouter()
@@ -13,6 +16,17 @@ export default function HistoryPageClient({ username }) {
         scoreTrend, bestScore, worstScore,
         avgScore, roastCount, hasHistory,
     } = useRoastHistory(username)
+
+    useEffect(() => {
+        if (error) {
+            createToast({
+                type: 'error',
+                message: error || 'Failed to load roast history',
+                position: 'top-center',
+                duration: 5000,
+            })
+        }
+    }, [error])
 
     if (loading) {
         return (
@@ -24,6 +38,16 @@ export default function HistoryPageClient({ username }) {
                     <button className="btn btn-ghost" onClick={() => router.push('/')}>
                         ← Home
                     </button>
+                </div>
+
+                <div className="breadcrumb-wrap">
+                    <Breadcrumb
+                        items={[
+                            { label: 'Home', href: '/' },
+                            { label: 'Wall of Shame', href: '/leaderboard' },
+                            { label: `@${username}` },
+                        ]}
+                    />
                 </div>
 
                 {}
@@ -74,7 +98,7 @@ export default function HistoryPageClient({ username }) {
             display:        flex;
             flex-direction: column;
             align-items:    center;
-            padding:        1.5rem 1rem 3rem;
+            padding:        1.5rem 1rem 6.5rem;
             gap:            1.25rem;
             max-width:      620px;
             margin:         0 auto;
@@ -84,6 +108,10 @@ export default function HistoryPageClient({ username }) {
             justify-content: space-between;
             align-items:     center;
             width:           100%;
+          }
+          .breadcrumb-wrap {
+            width:      100%;
+            margin-top: -0.5rem;
           }
           .nav-logo { font-size: 22px; }
 
@@ -219,13 +247,44 @@ export default function HistoryPageClient({ username }) {
                 </button>
             </div>
 
+            <div className="breadcrumb-wrap">
+                <Breadcrumb
+                    items={[
+                        { label: 'Home', href: '/' },
+                        { label: 'Wall of Shame', href: '/leaderboard' },
+                        { label: `@${username}` },
+                    ]}
+                />
+            </div>
+
             {}
             <div className="history-header card">
-                <div>
-                    <h1 className="font-display header-title text-fire">
-                        @{username}
-                    </h1>
-                    <p className="font-mono header-sub">Roast History</p>
+                <div className="header-user-info">
+                    <div className="history-avatar-box">
+                        {}
+                        <img
+                            src={`https://avatars.githubusercontent.com/${username}?s=96`}
+                            alt={`@${username}`}
+                            className="history-avatar-img"
+                            crossOrigin="anonymous"
+                            loading="eager"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                if (e.currentTarget.nextSibling) {
+                                    e.currentTarget.nextSibling.style.display = 'flex';
+                                }
+                            }}
+                        />
+                        <div className="history-avatar-fallback font-display" style={{ display: 'none' }}>
+                            {username[0]?.toUpperCase() || '?'}
+                        </div>
+                    </div>
+                    <div>
+                        <h1 className="font-display header-title text-fire">
+                            @{username}
+                        </h1>
+                        <p className="font-mono header-sub">Roast History</p>
+                    </div>
                 </div>
                 <button
                     className="btn btn-primary roast-again-btn"
@@ -254,8 +313,8 @@ export default function HistoryPageClient({ username }) {
                     <div className="stats-summary">
                         {[
                             { label: 'Total Roasts', value: roastCount, color: 'var(--fire)' },
-                            { label: 'Best Score', value: bestScore, color: 'var(--bad)' },
-                            { label: 'Worst Score', value: worstScore, color: 'var(--good)' },
+                            { label: 'Best Score', value: bestScore, color: 'var(--good)' },
+                            { label: 'Worst Score', value: worstScore, color: 'var(--bad)' },
                             { label: 'Avg Score', value: avgScore, color: 'var(--warn)' },
                         ].map(stat => (
                             <div key={stat.label} className="summary-box">
@@ -312,7 +371,7 @@ export default function HistoryPageClient({ username }) {
           display:        flex;
           flex-direction: column;
           align-items:    center;
-          padding:        1.5rem 1rem 3rem;
+          padding:        1.5rem 1rem 6.5rem;
           gap:            1.25rem;
           max-width:      620px;
           margin:         0 auto;
@@ -324,6 +383,10 @@ export default function HistoryPageClient({ username }) {
           align-items:     center;
           width:           100%;
         }
+        .breadcrumb-wrap {
+          width:      100%;
+          margin-top: -0.5rem;
+        }
         .nav-logo { font-size: 22px; }
         /* Header */
         .history-header {
@@ -334,6 +397,39 @@ export default function HistoryPageClient({ username }) {
           align-items:     center;
           gap:             1rem;
           flex-wrap:       wrap;
+        }
+        .header-user-info {
+          display:         flex;
+          align-items:     center;
+          gap:             14px;
+        }
+        .history-avatar-box {
+          width:           52px;
+          height:          52px;
+          border-radius:   50%;
+          background:      #161616;
+          border:          2px solid rgba(255, 69, 0, 0.4);
+          overflow:        hidden;
+          display:         flex;
+          align-items:     center;
+          justify-content: center;
+          flex-shrink:     0;
+          box-shadow:      0 4px 14px rgba(0, 0, 0, 0.4);
+        }
+        .history-avatar-img {
+          width:           100%;
+          height:          100%;
+          object-fit:      cover;
+          border-radius:   50%;
+        }
+        .history-avatar-fallback {
+          width:           100%;
+          height:          100%;
+          display:         flex;
+          align-items:     center;
+          justify-content: center;
+          font-size:       22px;
+          color:           var(--fire);
         }
         .header-title    { font-size: 32px; line-height: 1; }
         .header-sub      { color: var(--text-secondary); font-size: 12px; margin-top: 4px; }

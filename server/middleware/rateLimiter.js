@@ -10,22 +10,34 @@ setInterval(
     }
   },
   5 * 60 * 1000,
-);
+).unref();
 
 function createRateLimiter({
   windowMs = 60 * 1000,
-  maxRequests = 10,
+  maxRequests = 25,
   message = "Too many requests. Please slow down.",
 } = {}) {
   return function rateLimiter(req, res, next) {
     const ip =
       req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-      req.socket.remoteAddress ||
+      req.ip ||
+      req.socket?.remoteAddress ||
       "unknown";
 
     const now = Date.now();
 
-    const key = `${ip}:${req.path}`;
+    let routeScope = req.baseUrl || req.path;
+    if (req.baseUrl === "/api/roast") {
+      if (req.path === "/feed" || req.path === "/stats") {
+        routeScope = `/api/roast${req.path}`;
+      } else {
+        routeScope = "/api/roast/profile";
+      }
+    } else if (req.baseUrl === "/api/battle") {
+      routeScope = "/api/battle";
+    }
+
+    const key = `${ip}:${routeScope}`;
 
     const existing = requestCounts.get(key);
 
@@ -64,26 +76,26 @@ function createRateLimiter({
 
 const roastLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 5,
+  maxRequests: 20,
   message:
     "Too many roast requests. Give GitHub a breather — try again in a minute.",
 });
 
 const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  maxRequests: 10,
+  maxRequests: 25,
   message: "Too many auth attempts. Try again in 15 minutes.",
 });
 
 const battleLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 3,
+  maxRequests: 18,
   message: "Too many battle requests. Wait a minute before challenging again.",
 });
 
 const generalLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 60,
+  maxRequests: 75,
   message: "Too many requests. Please slow down.",
 });
 

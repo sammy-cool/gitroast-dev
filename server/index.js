@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const compression = require("compression");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
@@ -12,10 +13,12 @@ const {
   generalLimiter,
 } = require("./middleware/rateLimiter");
 const { logger, logRequest, attachProcessHandlers } = require("./utils/logger");
+const { startKeepAlive } = require("./services/keepAliveService");
 
 attachProcessHandlers();
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 5000;
 
 app.use((req, res, next) => {
@@ -30,15 +33,68 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(compression());
+
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://gitroast-dev.vercel.app",
+  "https://gitroast.dev",
+  "https://www.gitroast.dev",
+];
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (process.env.CLIENT_URL) {
+    const configured = process.env.CLIENT_URL.split(",").map((s) => s.trim().replace(/\/$/, ""));
+    if (configured.includes(origin)) return true;
+  }
+  if (/^https:\/\/gitroast.*\.vercel\.app$/.test(origin)) return true;
+  return false;
+}
+
 app.use(
   cors({
-    origin: [process.env.CLIENT_URL || "http://localhost:3000"],
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        logger.warn("CORS", `Request blocked for origin: ${origin}`);
+        callback(new Error(`CORS blocked for origin: ${origin}`));
+      }
+    },
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-Idempotency-Key"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Idempotency-Key",
+      "X-Captcha-Token",
+    ],
+    exposedHeaders: ["X-Idempotency-Key", "Retry-After"],
+    maxAge: 86400,
   }),
 );
 
-app.use(express.json({ limit: "10kb" }));
+app.get(["/health", "/api/health"], (req, res) => {
+  res.json({
+    status: "🔥 GitRoast server is alive",
+    time: new Date().toISOString(),
+    mongoDb:
+      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    env: process.env.NODE_ENV || "development",
+  });
+});
+
+app.use(
+  express.json({
+    limit: "10kb",
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser());
 
@@ -51,16 +107,7 @@ app.use("/api/auth", authLimiter, require("./routes/auth"));
 app.use("/api/history", require("./routes/history"));
 app.use("/api/payment", require("./routes/payment"));
 app.use("/api/battle", battleLimiter, require("./routes/battle"));
-
-app.get("/health", generalLimiter, (req, res) => {
-  res.json({
-    status: "🔥 GitRoast server is alive",
-    time: new Date().toISOString(),
-    mongoDb:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-    env: process.env.NODE_ENV || "development",
-  });
-});
+app.use("/api/contact", require("./routes/contact"));
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -76,6 +123,7 @@ mongoose
         env: process.env.NODE_ENV || "development",
         port: PORT,
       });
+      startKeepAlive();
     });
   })
   .catch((err) => {

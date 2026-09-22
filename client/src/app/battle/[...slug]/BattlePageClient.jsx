@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createToast } from 'customizable-toast-notification'
 import BattleCard from '@/components/BattleCard'
+import Breadcrumb from '@/components/Breadcrumb'
 import { getBattleRoast } from '@/services/roastService'
 import { useAuth } from '@/context/AuthContext'
 
@@ -64,7 +65,23 @@ export default function BattlePageClient({ user1, user2 }) {
             } catch (err) {
                 if (cancelled) return
 
-                if (err.code === 'RATE_LIMIT_EXCEEDED') {
+                if (err.code === 'CAPTCHA_REQUIRED' || err.code === 'CAPTCHA_FAILED') {
+                    createToast({
+                        type: 'warning',
+                        message: err.message || 'Bot verification blocked by browser shield. Please log in with GitHub to battle!',
+                        position: 'top-center',
+                        duration: 8000,
+                        showCloseButton: true,
+                        cta: {
+                            label: 'Login via GitHub ↗',
+                            onClick: () => {
+                                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                                window.location.href = `${apiBase}/api/auth/github`
+                            },
+                            autoClose: true,
+                        },
+                    })
+                } else if (err.code === 'RATE_LIMIT_EXCEEDED') {
                     const seconds = err.retryAfter ? `${err.retryAfter} seconds` : 'a minute'
                     createToast({
                         type: 'warning',
@@ -88,7 +105,7 @@ export default function BattlePageClient({ user1, user2 }) {
 
         fetchBattle()
         return () => { cancelled = true }
-    }, [user1, user2, router])
+    }, [user1, user2, router, getToken])
 
     const progress = Math.round((visibleSteps / BATTLE_STEPS.length) * 100)
 
@@ -200,6 +217,15 @@ export default function BattlePageClient({ user1, user2 }) {
                             </button>
                         </div>
                     </div>
+                    <div className="breadcrumb-container">
+                        <Breadcrumb
+                            items={[
+                                { label: 'Home', href: '/' },
+                                { label: 'Battle Arena', href: '/battle' },
+                                { label: `@${user1} vs @${user2}` },
+                            ]}
+                        />
+                    </div>
                     <BattleCard data={battleData} />
                 </main>
 
@@ -213,6 +239,11 @@ export default function BattlePageClient({ user1, user2 }) {
             width: 100%; max-width: 680px;
           }
           .nav-logo { font-size: 22px; }
+          .breadcrumb-container {
+            width: 100%;
+            max-width: 680px;
+            margin-bottom: -0.25rem;
+          }
         `}</style>
             </>
         )

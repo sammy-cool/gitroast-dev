@@ -13,20 +13,14 @@ export default function RateLimitBanner({ seconds, onExpired }) {
         }
 
         const timer = setInterval(() => {
-            setRemaining(prev => {
-                if (prev <= 1) {
-                    clearInterval(timer)
-                    onExpired?.()
-                    return 0
-                }
-                return prev - 1
-            })
+            setRemaining(prev => Math.max(0, prev - 1))
         }, 1000)
 
         return () => clearInterval(timer)
-    }, [])
+    }, [remaining, onExpired])
 
-    const percentage = Math.round((remaining / seconds) * 100)
+    const totalSecs = seconds > 0 ? seconds : 1
+    const percentage = Math.min(100, Math.max(0, Math.round((remaining / totalSecs) * 100)))
 
     return (
         <div className="rl-banner">

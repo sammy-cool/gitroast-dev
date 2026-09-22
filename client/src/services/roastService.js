@@ -1,5 +1,30 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+async function getCaptchaToken(action = "roast") {
+  if (typeof window === "undefined") return null;
+  const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+  if (!siteKey || !window.grecaptcha) return null;
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 3000);
+    try {
+      window.grecaptcha.ready(async () => {
+        try {
+          const token = await window.grecaptcha.execute(siteKey, { action });
+          clearTimeout(timer);
+          resolve(token);
+        } catch {
+          clearTimeout(timer);
+          resolve(null);
+        }
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(null);
+    }
+  });
+}
+
 export async function getRoast(
   username,
   idempotencyKey = null,
@@ -8,15 +33,21 @@ export async function getRoast(
 ) {
   const headers = { "Content-Type": "application/json" };
 
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    const captchaToken = await getCaptchaToken("roast");
+    if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+  }
+
   if (idempotencyKey) headers["X-Idempotency-Key"] = idempotencyKey;
 
-  const url = `${API_BASE}/api/roast/${username}?intensity=${encodeURIComponent(intensity)}`;
+  const url = `${API_BASE}/api/roast/${encodeURIComponent(username)}?intensity=${encodeURIComponent(intensity)}`;
 
   const res = await fetch(url, {
     method: "GET",
     headers,
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(60000),
   });
 
   const json = await res.json();
@@ -33,10 +64,10 @@ export async function getRoast(
 }
 
 export async function getRoastHistory(username) {
-  const res = await fetch(`${API_BASE}/api/history/${username}`, {
+  const res = await fetch(`${API_BASE}/api/history/${encodeURIComponent(username)}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(30000),
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.message || "Failed to fetch history");
@@ -48,7 +79,7 @@ export async function trackShare(roastId) {
   try {
     await fetch(`${API_BASE}/api/history/${roastId}/share`, {
       method: "POST",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
   } catch {
   }
@@ -57,7 +88,7 @@ export async function trackShare(roastId) {
 export async function checkHealth() {
   try {
     const res = await fetch(`${API_BASE}/health`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
     return res.ok;
   } catch {
@@ -65,13 +96,23 @@ export async function checkHealth() {
   }
 }
 
+export function wakeUpServer() {
+  if (typeof window === "undefined") return;
+  fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60000) }).catch(() => {});
+}
+
 export async function getBattleRoast(user1, user2, token = null) {
   const headers = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    const captchaToken = await getCaptchaToken("battle");
+    if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+  }
 
   const res = await fetch(
     `${API_BASE}/api/battle/${encodeURIComponent(user1)}/vs/${encodeURIComponent(user2)}`,
-    { method: "GET", headers, signal: AbortSignal.timeout(20000) },
+    { method: "GET", headers, signal: AbortSignal.timeout(60000) },
   );
 
   const json = await res.json();
@@ -93,11 +134,184 @@ export async function reactToRoast(roastId, type) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
     const json = await res.json();
     return json;
   } catch {
     return null;
   }
+}
+
+export async function getWrapped(username, year = 2025, token = null) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    const captchaToken = await getCaptchaToken("wrapped");
+    if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+  }
+
+  const res = await fetch(
+    `${API_BASE}/api/roast/${encodeURIComponent(username)}/wrapped?year=${year}`,
+    { method: "GET", headers, signal: AbortSignal.timeout(60000) },
+  );
+
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(json.message || "Failed to fetch GitHub Wrapped");
+    err.code = json.error;
+    err.status = res.status;
+    throw err;
+  }
+
+  return json.wrapped;
+}
+
+export async function getLeaderboard(page = 1, limit = 10) {
+  const res = await fetch(
+    `${API_BASE}/api/history/leaderboard/worst?page=${page}&limit=${limit}`,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(json.message || "Failed to fetch leaderboard");
+    err.code = json.error;
+    err.status = res.status;
+    throw err;
+  }
+
+  return json;
+}
+
+export async function searchLeaderboard(query, page = 1, limit = 10) {
+  const res = await fetch(
+    `${API_BASE}/api/history/leaderboard/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(10000),
+    },
+  );
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(json.message || "Search failed");
+    err.code = json.error;
+    throw err;
+  }
+  return json;
+}
+
+export async function getRoastFeed() {
+  try {
+    const res = await fetch(`${API_BASE}/api/roast/feed`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.success && Array.isArray(json.feed) ? json.feed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getRoastStats() {
+  try {
+    const res = await fetch(`${API_BASE}/api/roast/stats`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return 0;
+    const json = await res.json();
+    return json.success && typeof json.totalRoasts === "number" ? json.totalRoasts : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function getCompanyLeaderboard() {
+  try {
+    const res = await fetch(`${API_BASE}/api/history/leaderboard/companies`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.success && Array.isArray(json.companies) ? json.companies : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getRoastOfTheDay() {
+  try {
+    const res = await fetch(`${API_BASE}/api/history/daily-burn`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.success && json.roast ? json.roast : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getRepoRoast(
+  owner,
+  repo,
+  token = null,
+  intensity = "savage",
+) {
+  const headers = { "Content-Type": "application/json" };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    const captchaToken = await getCaptchaToken("roast");
+    if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+  }
+
+  const url = `${API_BASE}/api/roast/repo/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}?intensity=${encodeURIComponent(intensity)}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(60000),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(json.message || "Failed to fetch repository roast");
+    err.code = json.error;
+    err.status = res.status;
+    throw err;
+  }
+  return json.data;
+}
+
+export async function dispatchContactMessage({
+  category,
+  name,
+  email,
+  message,
+}) {
+  const res = await fetch(`${API_BASE}/api/contact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, name, email, message }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(json.error || "Failed to dispatch message");
+    err.code = json.code;
+    err.status = res.status;
+    throw err;
+  }
+
+  return json;
 }
