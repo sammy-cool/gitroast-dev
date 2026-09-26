@@ -87,7 +87,7 @@ export default function ProModal({ onClose }) {
                 <div className="modal-overlay" onClick={onClose}>
                     <div className="modal-box card" onClick={e => e.stopPropagation()}>
 
-                        <button className="modal-close font-mono" onClick={onClose}>✕</button>
+                        <button type="button" className="modal-close font-mono" onClick={onClose}>✕</button>
 
                         <div className="modal-header">
                             <p className="font-display modal-title text-fire">UPGRADE YOUR ROAST</p>
@@ -133,6 +133,7 @@ export default function ProModal({ onClose }) {
                                     </ul>
 
                                     <button
+                                        type="button"
                                         className={`btn modal-cta ${plan.highlight ? 'btn-primary' : 'btn-outline'}`}
                                         onClick={() => handlePlanSelect(plan.id)}
                                     >
@@ -143,6 +144,7 @@ export default function ProModal({ onClose }) {
                         </div>
 
                         <button
+                            type="button"
                             className="btn btn-ghost modal-compare"
                             onClick={() => { onClose(); router.push('/pricing') }}
                         >

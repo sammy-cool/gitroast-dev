@@ -6,6 +6,7 @@ import StatsGrid from './StatsGrid'
 import CommitShame from './CommitShame'
 import ShareButtons from './ShareButtons'
 import RoastReactions from './RoastReactions'
+import { trackView } from '@/services/roastService'
 
 const TYPING_SPEED = 18
 
@@ -17,7 +18,14 @@ export default function RoastCard({ data, onProClick }) {
   const intervalRef = useRef(null)
   const cursorTimerRef = useRef(null)
 
-  const roastText = data.roast || ''
+  const roastText = data?.roast || ''
+  const roastTargetId = data?.roastId || data?._id
+
+  useEffect(() => {
+    if (roastTargetId) {
+      trackView(roastTargetId)
+    }
+  }, [roastTargetId])
 
   useEffect(() => {
     return () => {
@@ -104,6 +112,8 @@ export default function RoastCard({ data, onProClick }) {
       clearInterval(cursorTimerRef.current)
     }
   }, [roastText])
+
+  if (!data) return null;
 
   const scoreColor =
     data.score < 40 ? 'var(--bad)' :
@@ -234,6 +244,29 @@ export default function RoastCard({ data, onProClick }) {
         </div>
 
         {}
+        {}
+        {}
+        {}
+        {}
+        {}
+        {typingDone && data?.redemptionPlan && data.redemptionPlan.length > 0 && (
+          <div className="redemption-container">
+            <div className="redemption-header font-mono">
+              <span className="redemption-badge">🛠️ ARCHITECT REDEMPTION PLAN</span>
+              <span className="redemption-pill">AI ACTION ITEMS</span>
+            </div>
+            <div className="redemption-list">
+              {data.redemptionPlan.map((item, idx) => (
+                <div key={idx} className="redemption-row">
+                  <span className="redemption-index font-mono">0{idx + 1}</span>
+                  <span className="redemption-text">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {}
         {typingDone && (data.roastId || data._id) && (
           <RoastReactions
             roastId={data.roastId || data._id}
@@ -247,6 +280,40 @@ export default function RoastCard({ data, onProClick }) {
         </div>
 
       </div>{}
+
+      {}
+      {}
+      {}
+      {}
+      {}
+      {}
+      {typingDone && !data.isPro && onProClick && (
+        <div className="nuclear-teaser-card">
+          <div className="nuclear-teaser-header font-mono">
+            <span className="nuclear-teaser-badge">☢️ NUCLEAR BURN PREVIEW</span>
+            <span className="nuclear-pro-pill">PRO ONLY</span>
+          </div>
+          <div className="nuclear-teaser-body">
+            <p className="nuclear-quote font-mono">
+              &ldquo;Google Gemini AI deep architectural analysis: your repository looks like a prototype that accidentally slipped into production...&rdquo;
+            </p>
+            <div className="nuclear-glass-overlay">
+              <div className="nuclear-lock-info font-mono">
+                <span className="nuclear-lock-icon">🔒</span>
+                <span className="nuclear-lock-text">Gemini AI Nuclear roast & private repos locked</span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary nuclear-upgrade-btn font-mono"
+                onClick={onProClick}
+                title="Unlock AI roasts and watermark-free downloads"
+              >
+                ⚡ Unlock Nuclear Burn — ₹99
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {}
       {typingDone && (
@@ -427,6 +494,60 @@ export default function RoastCard({ data, onProClick }) {
           border-top:     1px solid var(--border);
         }
 
+        .redemption-container {
+          padding: 1.2rem 1.5rem;
+          border-bottom: 1px solid var(--border);
+          background: linear-gradient(180deg, rgba(24, 12, 4, 0.5) 0%, rgba(10, 10, 10, 0.6) 100%);
+        }
+        .redemption-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 12px;
+          gap: 8px;
+        }
+        .redemption-badge {
+          font-size: 11px;
+          color: #ffaa55;
+          letter-spacing: 1px;
+          font-weight: 700;
+        }
+        .redemption-pill {
+          font-size: 9px;
+          padding: 2px 7px;
+          background: rgba(255, 69, 0, 0.12);
+          border: 1px solid rgba(255, 69, 0, 0.3);
+          border-radius: 4px;
+          color: var(--fire);
+          letter-spacing: 0.8px;
+        }
+        .redemption-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .redemption-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 8px 10px;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: var(--radius-sm);
+        }
+        .redemption-index {
+          font-size: 11px;
+          color: var(--fire-warm);
+          font-weight: 700;
+          line-height: 1.4;
+          flex-shrink: 0;
+        }
+        .redemption-text {
+          font-size: 12px;
+          line-height: 1.45;
+          color: var(--text-primary);
+        }
+
         .bio-contrast-box {
           padding:       1.2rem 1.5rem;
           border-bottom: 1px solid var(--border);
@@ -487,8 +608,86 @@ export default function RoastCard({ data, onProClick }) {
           border-radius: var(--radius-sm);
           color:         var(--text-primary);
         }
-        .verdict-text {
-          color: #ffaa55;
+        /* ── Nuclear Mode Pro Conversion Teaser ── */
+        .nuclear-teaser-card {
+          margin-top: 1rem;
+          background: #0d0a08;
+          border: 1px solid rgba(255, 69, 0, 0.35);
+          border-radius: var(--radius-md);
+          overflow: hidden;
+          position: relative;
+        }
+        .nuclear-teaser-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 14px;
+          background: rgba(255, 69, 0, 0.08);
+          border-bottom: 1px solid rgba(255, 69, 0, 0.2);
+        }
+        .nuclear-teaser-badge {
+          font-size: 11px;
+          color: var(--fire);
+          letter-spacing: 0.5px;
+          font-weight: 700;
+        }
+        .nuclear-pro-pill {
+          font-size: 9px;
+          padding: 2px 6px;
+          background: var(--fire);
+          color: #fff;
+          border-radius: 4px;
+          font-weight: 700;
+          letter-spacing: 0.5px;
+        }
+        .nuclear-teaser-body {
+          padding: 1rem 1.25rem;
+          position: relative;
+          min-height: 90px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .nuclear-quote {
+          font-size: 12px;
+          line-height: 1.6;
+          color: var(--text-secondary);
+          filter: blur(2.5px);
+          user-select: none;
+          margin: 0;
+          width: 100%;
+          opacity: 0.7;
+        }
+        .nuclear-glass-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(13, 10, 8, 0.65);
+          backdrop-filter: blur(4px);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 12px;
+          text-align: center;
+        }
+        .nuclear-lock-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: var(--text-primary);
+        }
+        .nuclear-lock-icon {
+          font-size: 13px;
+        }
+        .nuclear-upgrade-btn {
+          font-size: 12px;
+          padding: 7px 18px;
+          border-radius: var(--radius-sm);
+          font-weight: 700;
+          box-shadow: 0 0 16px rgba(255, 69, 0, 0.35);
+          cursor: pointer;
         }
 
         @media (max-width: 480px) {
@@ -496,6 +695,8 @@ export default function RoastCard({ data, onProClick }) {
           .card-header  { flex-direction: column; align-items: flex-start; }
           .score-block  { text-align: left; }
           .profile-name { max-width: 100%; }
+          .nuclear-lock-info { font-size: 10px; }
+          .nuclear-upgrade-btn { width: 100%; }
         }
       `}</style>
     </div>

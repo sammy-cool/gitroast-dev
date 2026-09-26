@@ -1,7 +1,7 @@
 'use client'
 
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createToast } from 'customizable-toast-notification'
@@ -21,7 +21,13 @@ export default function RepoRoastClient({ owner, repo }) {
   const router = useRouter()
   const { getToken } = useAuth()
 
+  const idempotencyKey = useRef('')
+
   useEffect(() => {
+    if (!idempotencyKey.current && owner && repo) {
+      idempotencyKey.current = `repo-${owner}-${repo}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    }
+
     if (!owner || !repo) {
       createToast({ type: 'error', message: 'Invalid repository target.', position: 'top-center' })
       router.push('/')
@@ -31,16 +37,35 @@ export default function RepoRoastClient({ owner, repo }) {
     let cancelled = false
 
     async function fetchRepo() {
+      const cacheKey = `gitroast_repo_${owner}_${repo}`
+      try {
+        const cached = sessionStorage.getItem(cacheKey)
+        if (cached) {
+          const parsed = JSON.parse(cached)
+          if (Date.now() - parsed.cachedAt < 5 * 60 * 1000) {
+            if (cancelled) return
+            setRoastData(parsed.data)
+            setView('result')
+            return
+          }
+        }
+      } catch {
+      }
       try {
         const token = getToken()
         const intensity = sessionStorage.getItem('gitroast_intensity') || 'savage'
 
         const [data] = await Promise.all([
-          getRepoRoast(owner, repo, token, intensity),
+          getRepoRoast(owner, repo, token, intensity, idempotencyKey.current),
           new Promise((resolve) => setTimeout(resolve, MIN_ANALYSIS_TIME)),
         ])
 
         if (cancelled) return
+
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ data, cachedAt: Date.now() }))
+        } catch {
+        }
 
         setRoastData(data)
         setView('result')

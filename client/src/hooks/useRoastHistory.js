@@ -29,29 +29,67 @@ export function useRoastHistory(username) {
     }, [username])
 
     useEffect(() => {
-        fetchHistory()
-    }, [fetchHistory])
+        let isCancelled = false
+
+        async function load() {
+            if (!username) {
+                setLoading(false)
+                return
+            }
+
+            setLoading(true)
+            setError(null)
+
+            try {
+                const res = await getRoastHistory(username)
+                if (!isCancelled) {
+                    setHistory(res.history || [])
+                }
+            } catch (err) {
+                if (!isCancelled) {
+                    setError(err.message || 'Failed to load history')
+                    setHistory([])
+                }
+            } finally {
+                if (!isCancelled) {
+                    setLoading(false)
+                }
+            }
+        }
+
+        load()
+
+        return () => {
+            isCancelled = true
+        }
+    }, [username])
 
 
-    const scoreTrend = history.length >= 2
-        ? history[0].score - history[1].score
+    const validScores = history
+        .map(r => Number(r?.score))
+        .filter(s => !isNaN(s));
+
+    const scoreTrend = validScores.length >= 2
+        ? validScores[0] - validScores[1]
         : null
 
-    const bestScore = history.length > 0
-        ? Math.max(...history.map(r => r.score))
+    const bestScore = validScores.length > 0
+        ? Math.max(...validScores)
         : null
 
-    const worstScore = history.length > 0
-        ? Math.min(...history.map(r => r.score))
+    const worstScore = validScores.length > 0
+        ? Math.min(...validScores)
         : null
 
-    const avgScore = history.length > 0
-        ? Math.round(history.reduce((s, r) => s + r.score, 0) / history.length)
+    const avgScore = validScores.length > 0
+        ? Math.round(validScores.reduce((s, v) => s + v, 0) / validScores.length)
         : null
 
     const byMonth = history.reduce((acc, roast) => {
-        const month = new Date(roast.createdAt)
-            .toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+        if (!roast?.createdAt) return acc
+        const parsed = new Date(roast.createdAt)
+        if (isNaN(parsed.getTime())) return acc
+        const month = parsed.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
         if (!acc[month]) acc[month] = []
         acc[month].push(roast)
         return acc

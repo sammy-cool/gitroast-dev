@@ -51,8 +51,10 @@ export default function BattleEntryClient() {
     const router = useRouter()
 
     function launchBattle(u1, u2) {
-        const p1 = (u1 || user1).trim().toLowerCase()
-        const p2 = (u2 || user2).trim().toLowerCase()
+        const raw1 = (u1 || user1 || '').trim()
+        const raw2 = (u2 || user2 || '').trim()
+        const p1 = raw1.replace(/^https?:\/\/(?:www\.)?github\.com\//i, '').replace(/^(?:www\.)?github\.com\//i, '').replace(/^\/+|\/+$/g, '').toLowerCase()
+        const p2 = raw2.replace(/^https?:\/\/(?:www\.)?github\.com\//i, '').replace(/^(?:www\.)?github\.com\//i, '').replace(/^\/+|\/+$/g, '').toLowerCase()
 
         if (!p1 || !p2) {
             createToast({
@@ -120,6 +122,7 @@ export default function BattleEntryClient() {
             {}
             <nav className="battle-top-nav" aria-label="Battle Navigation">
                 <button
+                    type="button"
                     className="btn btn-ghost back-btn"
                     onClick={() => router.push('/')}
                     aria-label="Back to GitRoast Home"
@@ -128,6 +131,7 @@ export default function BattleEntryClient() {
                 </button>
                 <div className="battle-nav-actions">
                     <button
+                        type="button"
                         className="btn btn-ghost random-btn"
                         onClick={handleRandomBattle}
                         title="Pick random famous rivalry"
@@ -136,6 +140,7 @@ export default function BattleEntryClient() {
                     </button>
                     {user?.username && (
                         <button
+                            type="button"
                             className="btn btn-outline fill-me-btn"
                             onClick={handleFillMyself}
                             title={`Set @${user.username} as Player 1`}
@@ -234,6 +239,7 @@ export default function BattleEntryClient() {
                 {}
                 <div className="battle-actions">
                     <button
+                        type="button"
                         className="btn btn-primary battle-btn font-mono"
                         onClick={() => launchBattle()}
                     >

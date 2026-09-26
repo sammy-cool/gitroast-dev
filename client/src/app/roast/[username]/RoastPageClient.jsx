@@ -8,6 +8,7 @@ import AnalyzingScreen from '@/components/AnalyzingScreen'
 import dynamic from 'next/dynamic';
 const RoastCard = dynamic(() => import('@/components/RoastCard'));
 const ProModal = dynamic(() => import('@/components/ProModal'), { ssr: false });
+import Link from 'next/link';
 import Breadcrumb from '@/components/Breadcrumb'
 import { getRoast } from '@/services/roastService'
 import { useAuth } from '@/context/AuthContext'
@@ -69,9 +70,10 @@ export default function RoastPageClient({ username }) {
           new Promise(resolve => setTimeout(resolve, MIN_ANALYSIS_TIME)),
         ])
 
-        if (cancelled) return
-
-        sessionStorage.setItem(cacheKey, JSON.stringify({ data, cachedAt: Date.now() }))
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ data, cachedAt: Date.now() }))
+        } catch {
+        }
         setRoastData(data)
         setView('result')
 
@@ -122,42 +124,50 @@ export default function RoastPageClient({ username }) {
             }))
           }
 
+          const isLoggedIn = !!getToken();
           createToast({
             type: 'warning',
             message: isOurLimit
               ? `⏱ Too many requests. Try again in ${seconds}.`
+              : isLoggedIn
+              ? `⚡ GitHub rate limit reached. Please wait a moment before roasting again.`
               : `GitHub public limit hit! Log in via GitHub to unlock your dedicated quota.`,
             position: 'top-center',
             duration: Math.min(retryAfter * 1000, 8000),
             showCloseButton: true,
-            cta: {
-              label: 'Login via GitHub ↗',
-              onClick: () => {
-                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-                window.location.href = `${apiBase}/api/auth/github`
+            ...(!isLoggedIn && {
+              cta: {
+                label: 'Login via GitHub ↗',
+                onClick: () => {
+                  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                  window.location.href = `${apiBase}/api/auth/github`
+                },
+                autoClose: true,
               },
-              autoClose: true,
-            },
+            }),
           })
           router.push('/')
           return
         }
 
         if (err.code === 'CAPTCHA_REQUIRED' || err.code === 'CAPTCHA_FAILED') {
+          const isLoggedIn = !!getToken();
           createToast({
             type: 'warning',
-            message: err.message || 'Bot verification blocked by browser shield. Please log in with GitHub to roast!',
+            message: err.message || (isLoggedIn ? 'Bot verification check could not be completed. Please try again.' : 'Bot verification blocked by browser shield. Please log in with GitHub to roast!'),
             position: 'top-center',
             duration: 8000,
             showCloseButton: true,
-            cta: {
-              label: 'Login via GitHub ↗',
-              onClick: () => {
-                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-                window.location.href = `${apiBase}/api/auth/github`
+            ...(!isLoggedIn && {
+              cta: {
+                label: 'Login via GitHub ↗',
+                onClick: () => {
+                  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                  window.location.href = `${apiBase}/api/auth/github`
+                },
+                autoClose: true,
               },
-              autoClose: true,
-            },
+            }),
           })
           router.push('/')
           return
@@ -229,21 +239,24 @@ export default function RoastPageClient({ username }) {
             onProClick={() => setShowProModal(true)}
           />
 
-          <div className="upsell-card card">
-            <div>
-              <p className="upsell-title">📈 Historian Plan</p>
-              <p className="upsell-sub font-mono">
-                Monthly report · Score trends · Roast streak tracking.
-              </p>
-            </div>
-            <div className="upsell-price">
-              <div className="upsell-amount-row">
-                <span className="font-display upsell-symbol">₹</span>
-                <span className="font-display upsell-number">199</span>
+          {}
+          <Link href="/pricing" className="upsell-link">
+            <div className="upsell-card card">
+              <div>
+                <p className="upsell-title">📈 Historian Plan</p>
+                <p className="upsell-sub font-mono">
+                  Monthly report · Score trends · Roast streak tracking.
+                </p>
               </div>
-              <span className="font-mono upsell-period">/month</span>
+              <div className="upsell-price">
+                <div className="upsell-amount-row">
+                  <span className="font-display upsell-symbol">₹</span>
+                  <span className="font-display upsell-number">199</span>
+                </div>
+                <span className="font-mono upsell-period">/month</span>
+              </div>
             </div>
-          </div>
+          </Link>
         </main>
 
         {showProModal && <ProModal onClose={() => setShowProModal(false)} />}
@@ -254,7 +267,24 @@ export default function RoastPageClient({ username }) {
             display:        flex;
             flex-direction: column;
             align-items:    center;
-            padding:        1.5rem 1rem 6rem;
+            /*
+              ── WHAT: ────────────────────────────────────────────────────────
+              Roast result page layout padding.
+
+              ── WHY: ─────────────────────────────────────────────────────────
+              Per AGENTS.md Rule 2.3, the fixed site footer requires at least 6.5rem
+              clearance so the upsell card is never obscured by the bottom bar.
+
+              ── WHERE & WHEN TO USE: ─────────────────────────────────────────
+              Top-level page views.
+
+              ── USE CASES: ───────────────────────────────────────────────────
+              Roast result page viewport clearance.
+
+              ── WHEN NOT TO USE: ─────────────────────────────────────────────
+              Inside scrollable modal bodies.
+            */
+            padding:        1.5rem 1rem 6.5rem;
             gap:            1.25rem;
           }
           .result-nav {
@@ -270,6 +300,17 @@ export default function RoastPageClient({ username }) {
             margin-top: -0.5rem;
           }
           .nav-logo      { font-size: 22px; }
+          .result-page :global(.upsell-link) {
+            text-decoration: none;
+            color:           inherit;
+            width:           100%;
+            max-width:       580px;
+            display:         block;
+            transition:      transform 0.18s ease;
+          }
+          .result-page :global(.upsell-link:hover) {
+            transform: translateY(-2px);
+          }
           .upsell-card {
             width:           100%;
             max-width:       580px;
@@ -278,6 +319,12 @@ export default function RoastPageClient({ username }) {
             justify-content: space-between;
             align-items:     center;
             gap:             1rem;
+            cursor:          pointer;
+            transition:      border-color 0.18s ease, box-shadow 0.18s ease;
+          }
+          .upsell-card:hover {
+            border-color: rgba(255, 69, 0, 0.4);
+            box-shadow: 0 4px 20px rgba(255, 69, 0, 0.08);
           }
           .upsell-title  { font-size: 14px; font-weight: 500; margin: 0 0 4px; }
           .upsell-sub    { color: var(--text-secondary); font-size: 12px; }

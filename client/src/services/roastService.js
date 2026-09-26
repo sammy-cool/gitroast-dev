@@ -1,5 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+async function safeParseJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text || `HTTP ${res.status} ${res.statusText}`, error: "GATEWAY_ERROR" };
+  }
+}
+
 async function getCaptchaToken(action = "roast") {
   if (typeof window === "undefined") return null;
   const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
@@ -50,7 +59,7 @@ export async function getRoast(
     signal: AbortSignal.timeout(60000),
   });
 
-  const json = await res.json();
+  const json = await safeParseJson(res);
 
   if (!res.ok) {
     const err = new Error(json.message || "Failed to fetch roast");
@@ -69,7 +78,7 @@ export async function getRoastHistory(username) {
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(30000),
   });
-  const json = await res.json();
+  const json = await safeParseJson(res);
   if (!res.ok) throw new Error(json.message || "Failed to fetch history");
   return json;
 }
@@ -80,6 +89,39 @@ export async function trackShare(roastId) {
     await fetch(`${API_BASE}/api/history/${roastId}/share`, {
       method: "POST",
       signal: AbortSignal.timeout(10000),
+    });
+  } catch {
+  }
+}
+
+export async function trackView(roastId) {
+  if (!roastId) return;
+  try {
+    await fetch(`${API_BASE}/api/history/${roastId}/view`, {
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+  }
+}
+
+export async function trackBattleShare(battleId) {
+  if (!battleId) return;
+  try {
+    await fetch(`${API_BASE}/api/battle/${battleId}/share`, {
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+  }
+}
+
+export async function trackBattleView(battleId) {
+  if (!battleId) return;
+  try {
+    await fetch(`${API_BASE}/api/battle/${battleId}/view`, {
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
     });
   } catch {
   }
@@ -115,7 +157,7 @@ export async function getBattleRoast(user1, user2, token = null) {
     { method: "GET", headers, signal: AbortSignal.timeout(60000) },
   );
 
-  const json = await res.json();
+  const json = await safeParseJson(res);
 
   if (!res.ok) {
     const err = new Error(json.message || "Battle failed");
@@ -136,7 +178,24 @@ export async function reactToRoast(roastId, type) {
       body: JSON.stringify({ type }),
       signal: AbortSignal.timeout(10000),
     });
-    const json = await res.json();
+    if (!res.ok) return null;
+    const json = await safeParseJson(res);
+    return json;
+  } catch {
+    return null;
+  }
+}
+
+export async function reactToBattle(battleId, type) {
+  try {
+    const res = await fetch(`${API_BASE}/api/battle/${battleId}/react`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const json = await safeParseJson(res);
     return json;
   } catch {
     return null;
@@ -157,7 +216,7 @@ export async function getWrapped(username, year = 2025, token = null) {
     { method: "GET", headers, signal: AbortSignal.timeout(60000) },
   );
 
-  const json = await res.json();
+  const json = await safeParseJson(res);
   if (!res.ok) {
     const err = new Error(json.message || "Failed to fetch GitHub Wrapped");
     err.code = json.error;
@@ -178,7 +237,7 @@ export async function getLeaderboard(page = 1, limit = 10) {
     },
   );
 
-  const json = await res.json();
+  const json = await safeParseJson(res);
   if (!res.ok) {
     const err = new Error(json.message || "Failed to fetch leaderboard");
     err.code = json.error;
@@ -198,7 +257,7 @@ export async function searchLeaderboard(query, page = 1, limit = 10) {
       signal: AbortSignal.timeout(10000),
     },
   );
-  const json = await res.json();
+  const json = await safeParseJson(res);
   if (!res.ok) {
     const err = new Error(json.message || "Search failed");
     err.code = json.error;
@@ -213,7 +272,7 @@ export async function getRoastFeed() {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return [];
-    const json = await res.json();
+    const json = await safeParseJson(res);
     return json.success && Array.isArray(json.feed) ? json.feed : [];
   } catch {
     return [];
@@ -226,7 +285,7 @@ export async function getRoastStats() {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return 0;
-    const json = await res.json();
+    const json = await safeParseJson(res);
     return json.success && typeof json.totalRoasts === "number" ? json.totalRoasts : 0;
   } catch {
     return 0;
@@ -239,7 +298,7 @@ export async function getCompanyLeaderboard() {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return [];
-    const json = await res.json();
+    const json = await safeParseJson(res);
     return json.success && Array.isArray(json.companies) ? json.companies : [];
   } catch {
     return [];
@@ -252,7 +311,7 @@ export async function getRoastOfTheDay() {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
-    const json = await res.json();
+    const json = await safeParseJson(res);
     return json.success && json.roast ? json.roast : null;
   } catch {
     return null;
@@ -264,8 +323,10 @@ export async function getRepoRoast(
   repo,
   token = null,
   intensity = "savage",
+  idempotencyKey = null,
 ) {
   const headers = { "Content-Type": "application/json" };
+  if (idempotencyKey) headers["X-Idempotency-Key"] = idempotencyKey;
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -282,7 +343,7 @@ export async function getRepoRoast(
     signal: AbortSignal.timeout(60000),
   });
 
-  const json = await res.json();
+  const json = await safeParseJson(res);
   if (!res.ok) {
     const err = new Error(json.message || "Failed to fetch repository roast");
     err.code = json.error;
@@ -298,17 +359,139 @@ export async function dispatchContactMessage({
   email,
   message,
 }) {
+  const headers = { "Content-Type": "application/json" };
+  const captchaToken = await getCaptchaToken("contact");
+  if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+
   const res = await fetch(`${API_BASE}/api/contact`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ category, name, email, message }),
     signal: AbortSignal.timeout(15000),
   });
 
-  const json = await res.json();
+  const json = await safeParseJson(res);
   if (!res.ok) {
     const err = new Error(json.error || "Failed to dispatch message");
     err.code = json.code;
+    err.status = res.status;
+    throw err;
+  }
+
+  return json;
+}
+
+export async function streamRoast(
+  username,
+  intensity = "savage",
+  token = null,
+  callbacks = {},
+) {
+  const { onMetadata, onChunk, onDone, onError } = callbacks;
+  const headers = { Accept: "text/event-stream" };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    const captchaToken = await getCaptchaToken("roast");
+    if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+  }
+
+  const url = `${API_BASE}/api/roast/${encodeURIComponent(username)}/stream?intensity=${encodeURIComponent(intensity)}`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const err = new Error(errJson.message || `SSE stream failed with status ${res.status}`);
+      err.status = res.status;
+      err.code = errJson.error;
+      throw err;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error("ReadableStream not supported by response body");
+    }
+
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() || "";
+
+        for (const block of blocks) {
+          const trimmed = block.trim();
+          if (!trimmed) continue;
+
+          let eventType = "message";
+          let dataStr = "";
+
+          const lines = trimmed.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("event:")) {
+              eventType = line.replace(/^event:\s*/, "").trim();
+            } else if (line.startsWith("data:")) {
+              dataStr = line.replace(/^data:\s*/, "").trim();
+            }
+          }
+
+          if (!dataStr) continue;
+
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (eventType === "metadata" && onMetadata) {
+              onMetadata(parsed);
+            } else if (eventType === "chunk" && onChunk) {
+              onChunk(parsed.chunk || parsed.text || "");
+            } else if (eventType === "done" && onDone) {
+              onDone(parsed.roast || parsed);
+            } else if (eventType === "error") {
+              const streamErr = new Error(parsed.message || "Streaming error");
+              if (onError) onError(streamErr);
+              throw streamErr;
+            }
+          } catch {
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (err) {
+    if (onError) onError(err);
+    throw err;
+  }
+}
+
+export const getBattle = getBattleRoast;
+export const getDailyBurn = getRoastOfTheDay;
+
+export async function getRateLimitStatus(token = null) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/api/roast/rate-limit-status`, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(10000),
+  });
+
+  const json = await safeParseJson(res);
+  if (!res.ok) {
+    const err = new Error(json.message || "Failed to fetch rate limit status");
+    err.code = json.error;
     err.status = res.status;
     throw err;
   }

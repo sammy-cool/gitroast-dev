@@ -8,12 +8,13 @@ const {
   verifyToken,
 } = require("../services/tokenService");
 const { requireAuth } = require("../middleware/auth");
+const { authLimiter } = require("../middleware/rateLimiter");
 const { logger } = require("../utils/logger");
 
 const rawClientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 const CLIENT_URL = rawClientUrl.split(",")[0].trim().replace(/\/$/, "");
 
-router.get("/github", (req, res) => {
+router.get("/github", authLimiter, (req, res) => {
   const state = crypto.randomBytes(16).toString("hex");
 
   res.cookie("oauth_state", state, {
@@ -34,7 +35,7 @@ router.get("/github", (req, res) => {
   res.redirect(githubAuthUrl);
 });
 
-router.get("/github/callback", async (req, res) => {
+router.get("/github/callback", authLimiter, async (req, res) => {
   const { code, error, state } = req.query;
   const savedState = req.cookies?.oauth_state;
 
@@ -87,6 +88,14 @@ router.get("/github/callback", async (req, res) => {
     });
     const profile = await profileRes.json();
 
+    if (!profileRes.ok || !profile || !profile.id || !profile.login) {
+      logger.error("Auth", "Invalid or missing GitHub profile payload", {
+        status: profileRes.status,
+        profile,
+      });
+      return res.redirect(`${CLIENT_URL}/auth/callback?auth_error=profile_failed`);
+    }
+
     let email = profile.email;
     if (!email) {
       try {
@@ -98,7 +107,9 @@ router.get("/github/callback", async (req, res) => {
           },
         });
         const emails = await emailRes.json();
-        const primary = emails.find((e) => e.primary && e.verified);
+        const primary = Array.isArray(emails)
+          ? emails.find((e) => e.primary && e.verified)
+          : null;
         email = primary?.email || null;
       } catch {
       }

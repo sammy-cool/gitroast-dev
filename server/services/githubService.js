@@ -22,9 +22,14 @@ async function githubFetch(endpoint, userToken = null) {
 
   if (res.status === 403) {
     const remaining = res.headers.get("X-RateLimit-Remaining");
-    if (remaining === "0") {
+    if (remaining === "0" || res.headers.get("retry-after")) {
       throw new Error("RATE_LIMIT_EXCEEDED");
     }
+    const bodyText = await res.text().catch(() => "");
+    if (bodyText.includes("rate limit") || bodyText.includes("secondary rate limit")) {
+      throw new Error("RATE_LIMIT_EXCEEDED");
+    }
+    throw new Error("RATE_LIMIT_EXCEEDED");
   }
 
   if (res.status === 404) {
@@ -61,6 +66,9 @@ async function fetchRecentCommits(username, repos, userToken) {
       `/repos/${encodeURIComponent(username)}/${encodeURIComponent(mostActive.name)}/commits?per_page=15`,
       userToken,
     );
+    if (!Array.isArray(commits)) {
+      return [];
+    }
     return commits
       .map((c) => c.commit?.message?.split("\n")[0]?.trim())
       .filter(Boolean);
@@ -70,8 +78,10 @@ async function fetchRecentCommits(username, repos, userToken) {
 }
 
 async function checkReadmeQuality(username, repos, userToken) {
-  const sorted = [...repos].sort(
-    (a, b) => b.stargazers_count - a.stargazers_count,
+  const ownRepos = (repos || []).filter((r) => !r.fork);
+  const candidates = ownRepos.length > 0 ? ownRepos : (repos || []);
+  const sorted = [...candidates].sort(
+    (a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0),
   );
   const topRepo = sorted[0];
 
@@ -95,7 +105,8 @@ async function checkReadmeQuality(username, repos, userToken) {
 }
 
 function analyzeRepos(repos) {
-  const ownRepos = repos.filter((r) => !r.fork);
+  const safeRepos = Array.isArray(repos) ? repos : [];
+  const ownRepos = safeRepos.filter((r) => !r.fork);
   const totalOwn = ownRepos.length;
 
   const abandoned = ownRepos.filter((r) => {

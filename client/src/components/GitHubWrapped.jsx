@@ -81,7 +81,9 @@ export default function GitHubWrapped({ username, isPro }) {
             const link = document.createElement("a");
             link.download = `gitroast-wrapped-2025-${username}.png`;
             link.href = canvas.toDataURL("image/png", 1.0);
+            document.body.appendChild(link);
             link.click();
+            document.body.removeChild(link);
 
             createToast({
                 type: "success",
@@ -107,7 +109,10 @@ export default function GitHubWrapped({ username, isPro }) {
 
     function handleShareTweet() {
         if (!wrappedData) return;
-        const text = `My 2025 GitHub Wrapped Archetype: "${wrappedData.archetypeEmoji} ${wrappedData.archetype}".\n\nTotal Commits: ${wrappedData.totalCommits}\nWorst Month: ${wrappedData.worstMonth.month} (${wrappedData.worstMonth.commits} commits)\nAnnual Grade: ${wrappedData.annualGrade}\n\nRoasted by @GitRoast 🔥\n${window.location.origin}/history/${username}`;
+        const worstMonthText = wrappedData.worstMonth?.month
+            ? `Worst Month: ${wrappedData.worstMonth.month} (${wrappedData.worstMonth.commits || 0} commits)`
+            : 'Worst Month: None';
+        const text = `My 2025 GitHub Wrapped Archetype: "${wrappedData.archetypeEmoji || '🔥'} ${wrappedData.archetype || 'Developer'}".\n\nTotal Commits: ${wrappedData.totalCommits || 0}\n${worstMonthText}\nAnnual Grade: ${wrappedData.annualGrade || 'B'}\n\nRoasted by @GitRoast 🔥\n${window.location.origin}/history/${username}`;
         window.open(
             `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
             "_blank",
@@ -121,8 +126,8 @@ export default function GitHubWrapped({ username, isPro }) {
         });
     }
 
-    const maxMonthly = wrappedData
-        ? Math.max(1, ...wrappedData.monthlyCommits.map((m) => m.count))
+    const maxMonthly = wrappedData?.monthlyCommits?.length
+        ? Math.max(1, ...wrappedData.monthlyCommits.map((m) => m.count || 0))
         : 1;
 
     return (
@@ -210,30 +215,30 @@ export default function GitHubWrapped({ username, isPro }) {
                                     <div className="stat-card">
                                         <span className="stat-label font-mono">Worst Month</span>
                                         <span className="stat-num font-display text-danger">
-                                            {wrappedData.worstMonth.month}
+                                            {wrappedData.worstMonth?.month || 'N/A'}
                                         </span>
                                         <span className="stat-sub font-mono">
-                                            {wrappedData.worstMonth.comment}
+                                            {wrappedData.worstMonth?.comment || 'No commits'}
                                         </span>
                                     </div>
 
                                     <div className="stat-card">
                                         <span className="stat-label font-mono">Best Streak</span>
                                         <span className="stat-num font-display text-fire">
-                                            {wrappedData.bestStreak}d
+                                            {wrappedData.bestStreak || 0}d
                                         </span>
                                         <span className="stat-sub font-mono">
-                                            Died on {wrappedData.streakDiedOn}
+                                            Died on {wrappedData.streakDiedOn || 'N/A'}
                                         </span>
                                     </div>
 
                                     <div className="stat-card">
                                         <span className="stat-label font-mono">Most Abandoned</span>
                                         <span className="stat-num font-mono text-repo">
-                                            {wrappedData.mostAbandonedRepo.name}
+                                            {wrappedData.mostAbandonedRepo?.name || 'None'}
                                         </span>
                                         <span className="stat-sub font-mono">
-                                            {wrappedData.mostAbandonedRepo.note}
+                                            {wrappedData.mostAbandonedRepo?.note || 'Clean slate'}
                                         </span>
                                     </div>
                                 </div>
@@ -245,12 +250,12 @@ export default function GitHubWrapped({ username, isPro }) {
                                         <span className="chart-year font-mono">2025</span>
                                     </div>
                                     <div className="chart-bars">
-                                        {wrappedData.monthlyCommits.map((m) => {
+                                        {(wrappedData.monthlyCommits || []).map((m) => {
                                             const heightPct = Math.max(
                                                 8,
-                                                Math.round((m.count / maxMonthly) * 100),
+                                                Math.round(((m.count || 0) / maxMonthly) * 100),
                                             );
-                                            const isWorst = m.month === wrappedData.worstMonth.month;
+                                            const isWorst = m.month === wrappedData.worstMonth?.month;
                                             return (
                                                 <div key={m.month} className="bar-col">
                                                     <div
@@ -357,7 +362,7 @@ export default function GitHubWrapped({ username, isPro }) {
                             <div className="capture-stat-box">
                                 <span className="cs-label font-mono">Worst Month</span>
                                 <span className="cs-val font-display cs-danger">
-                                    {wrappedData.worstMonth.month}
+                                    {wrappedData.worstMonth?.month || 'N/A'}
                                 </span>
                             </div>
                             <div className="capture-stat-box">

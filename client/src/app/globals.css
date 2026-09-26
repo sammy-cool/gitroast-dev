@@ -19,9 +19,9 @@
   --info: #ff6b00;
 
   --text-primary: #f5f5f5;
-  --text-secondary: #777777;
-  --text-muted: #3a3a3a;
-  --text-ghost: #222222;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+  --text-ghost: #383838;
 
   --font-display: var(--font-display-loaded, "Impact", sans-serif);
   --font-mono: var(--font-mono-loaded, "Courier New", monospace);

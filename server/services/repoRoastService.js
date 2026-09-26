@@ -1,4 +1,5 @@
-const { generateAIRoast } = require("./aiService");
+const { generateAIRepoRoast, generateAIRedemptionPlan } = require("./aiService");
+const { evaluateCommitHygiene } = require("./typeSafeService");
 const { logger } = require("../utils/logger");
 
 const BASE_URL = "https://api.github.com";
@@ -25,12 +26,9 @@ async function githubFetch(endpoint, token = null) {
     throw err;
   }
   if (res.status === 403) {
-    const remaining = res.headers.get("X-RateLimit-Remaining");
-    if (remaining === "0") {
-      const err = new Error("RATE_LIMIT_EXCEEDED");
-      err.code = "RATE_LIMIT_EXCEEDED";
-      throw err;
-    }
+    const err = new Error("RATE_LIMIT_EXCEEDED");
+    err.code = "RATE_LIMIT_EXCEEDED";
+    throw err;
   }
   if (!res.ok) {
     throw new Error(`GITHUB_API_ERROR_${res.status}`);
@@ -62,11 +60,23 @@ async function analyzeRepository(owner, repoName, userToken = null, isPro = fals
     }
   });
 
-  const commitQuality = commitMessages.length > 0
+  let commitQuality = commitMessages.length > 0
     ? Math.max(10, Math.round(100 - (lazyCommitCount / commitMessages.length) * 80))
     : 30;
 
-  const fileNames = contents.map((f) => f.name.toLowerCase());
+  if (commitMessages.length > 0) {
+    try {
+      const typeSafeResult = await evaluateCommitHygiene(commitMessages);
+      if (typeSafeResult.aiEvaluated) {
+        commitQuality = Math.round((commitQuality * 0.4) + (typeSafeResult.qualityPercentage * 0.6));
+      }
+    } catch {
+    }
+  }
+
+  const fileNames = Array.isArray(contents)
+    ? contents.map((f) => (f && f.name ? f.name.toLowerCase() : "")).filter(Boolean)
+    : [];
   const hasTests = fileNames.some((n) => n.includes("test") || n.includes("spec"));
   const hasReadme = fileNames.includes("readme.md") || fileNames.includes("readme");
   const hasGitignore = fileNames.includes(".gitignore");
@@ -116,28 +126,49 @@ async function analyzeRepository(owner, repoName, userToken = null, isPro = fals
 
   if (isPro) {
     try {
-      const aiPromptData = {
-        username: `${owner}/${repoName}`,
-        totalRepos: 1,
-        joinYear: new Date(repo.created_at).getFullYear(),
-        followers: repo.stargazers_count,
-        stats: [
-          { label: "Stars", value: `${repo.stargazers_count}` },
-          { label: "Open Issues", value: `${repo.open_issues_count}` },
-          { label: "Commit Quality", value: `${commitQuality}%` },
-          { label: "Test Coverage", value: hasTests ? "Present" : "None" },
-        ],
-        shameCommits: commitMessages.slice(0, 3),
+      const repoMetrics = {
+        owner,
+        repoName,
+        fullName: `${owner}/${repoName}`,
+        description: repo.description,
+        language: repo.language || "Unknown",
+        stars: repo.stargazers_count || 0,
+        forks: repo.forks_count || 0,
+        openIssues: repo.open_issues_count || 0,
         score,
         grade,
+        commitQuality,
+        codeSmells,
+        shameCommits: commitMessages.slice(0, 4),
+        monthsInactive,
+        hasTests,
       };
-      const aiText = await generateAIRoast(aiPromptData, intensity);
+      const aiText = await generateAIRepoRoast(repoMetrics, intensity);
       if (aiText) {
         finalRoast = aiText;
         roastSource = "ai";
       }
     } catch (err) {
       logger.warn("RepoRoast", "AI generation failed, using rule roast", { message: err.message });
+    }
+  }
+
+  let redemptionPlan = [];
+  if (isPro) {
+    try {
+      redemptionPlan = await generateAIRedemptionPlan({
+        fullName: `${owner}/${repoName}`,
+        language: repo.language || "Unknown",
+        stars: repo.stargazers_count || 0,
+        openIssues: repo.open_issues_count || 0,
+        hasTests,
+        commitQuality,
+        codeSmells,
+        hasReadme,
+        monthsInactive,
+      });
+    } catch (err) {
+      logger.warn("RepoRoast", "Failed to generate repo redemption plan", { message: err.message });
     }
   }
 
@@ -160,6 +191,7 @@ async function analyzeRepository(owner, repoName, userToken = null, isPro = fals
     shameCommits: commitMessages.slice(0, 4),
     roast: finalRoast,
     roastSource,
+    redemptionPlan,
     intensity,
     url: repo.html_url,
     avatarUrl: repo.owner?.avatar_url || `https://avatars.githubusercontent.com/${owner}?s=96`,

@@ -1,3 +1,5 @@
+const redisService = require("../services/redisService");
+
 const requestCounts = new Map();
 
 setInterval(
@@ -7,6 +9,9 @@ setInterval(
       if (data.resetTime < now) {
         requestCounts.delete(key);
       }
+    }
+    if (requestCounts.size >= 50000) {
+      requestCounts.clear();
     }
   },
   5 * 60 * 1000,
@@ -38,6 +43,31 @@ function createRateLimiter({
     }
 
     const key = `${ip}:${routeScope}`;
+
+    if (redisService.isConfigured) {
+      const ttlSeconds = Math.ceil(windowMs / 1000);
+      redisService
+        .incrWithTtl(key, ttlSeconds)
+        .then(({ count, ttl }) => {
+          if (count > maxRequests) {
+            res.setHeader("Retry-After", ttl);
+            res.setHeader("X-RateLimit-Limit", maxRequests);
+            res.setHeader("X-RateLimit-Remaining", 0);
+            return res.status(429).json({
+              error: "RATE_LIMIT_EXCEEDED",
+              message,
+              retryAfter: ttl,
+            });
+          }
+          res.setHeader("X-RateLimit-Limit", maxRequests);
+          res.setHeader("X-RateLimit-Remaining", Math.max(0, maxRequests - count));
+          next();
+        })
+        .catch(() => {
+          next();
+        });
+      return;
+    }
 
     const existing = requestCounts.get(key);
 

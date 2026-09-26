@@ -83,7 +83,9 @@ export default function RoastCertificate({
             const link = document.createElement("a");
             link.download = `gitroast-certificate-${username}.png`;
             link.href = canvas.toDataURL("image/png", 1.0);
+            document.body.appendChild(link);
             link.click();
+            document.body.removeChild(link);
 
             createToast({
                 type: "success",
@@ -111,6 +113,7 @@ export default function RoastCertificate({
         <>
             {}
             <button
+                type="button"
                 className="cert-btn font-mono"
                 onClick={handleCertificate}
                 disabled={generating}
@@ -190,6 +193,10 @@ export default function RoastCertificate({
                                         className="cert-qr"
                                         crossOrigin="anonymous"
                                         loading="eager"
+                                        onError={(e) => {
+                                            e.currentTarget.onerror = null;
+                                            e.currentTarget.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72"><rect width="72" height="72" fill="%23fdfaf3"/><rect x="8" y="8" width="56" height="56" fill="none" stroke="%232c1810" stroke-width="2"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="monospace" font-size="10" font-weight="bold" fill="%232c1810">VERIFY</text></svg>';
+                                        }}
                                     />
                                     <span className="cert-qr-label font-mono">SCAN TO VERIFY</span>
                                 </div>

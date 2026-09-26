@@ -1,5 +1,5 @@
 export default function CommitShame({ commits }) {
-    if (!commits || commits.length === 0) return null
+    if (!Array.isArray(commits) || commits.length === 0) return null
 
     return (
         <div className="commit-shame">

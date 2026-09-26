@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from 'react'
 import { createToast } from 'customizable-toast-notification'
 import { useAuth } from '@/context/AuthContext'
+import ProBadge from './ProBadge'
 
 const subscribe = () => () => {}
 
@@ -39,9 +40,8 @@ export default function GitHubLoginBtn({ variant = 'full' }) {
                     />
                 )}
                 <span className="font-mono user-name">@{user.username}</span>
-                {isPro && (
-                    <span className="pro-badge font-mono">PRO ⚡</span>
-                )}
+                {}
+                {isPro && <ProBadge size="sm" />}
                 <button
                     className="btn btn-ghost logout-btn"
                     onClick={() => {

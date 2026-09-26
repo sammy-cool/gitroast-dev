@@ -12,7 +12,10 @@ function getScoreColor(score) {
 }
 
 function getRelativeTime(dateStr) {
-    const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000)
+    if (!dateStr) return 'recently'
+    const parsed = new Date(dateStr).getTime()
+    if (isNaN(parsed)) return 'recently'
+    const diff = Math.floor((Date.now() - parsed) / 1000)
     if (diff < 60) return 'just now'
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
@@ -62,7 +65,7 @@ export default function LiveRoastFeed() {
                 <div className="feed-track">
                     {displayFeed.map((item, i) => (
                         <Link
-                            key={`${item._id}-${i}`}
+                            key={`${item._id || item.id || item.username}-${i}`}
                             href={`/history/${item.username}`}
                             className="feed-link"
                             title={`View @${item.username}'s roast`}

@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true,
             trim: true,
+            index: true,
         },
 
         email: {
@@ -34,9 +35,21 @@ const userSchema = new mongoose.Schema(
         isPro: {
             type: Boolean,
             default: false,
+            index: true,
+        },
+
+        proPlan: {
+            type: String,
+            enum: ['none', 'roaster', 'historian'],
+            default: 'none',
         },
 
         proSince: {
+            type: Date,
+            default: null,
+        },
+
+        proExpiresAt: {
             type: Date,
             default: null,
         },
@@ -50,11 +63,41 @@ const userSchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
+
+        badges: {
+            type: [String],
+            default: [],
+        },
+
+        customPreferences: {
+            defaultIntensity: {
+                type: String,
+                enum: ['mild', 'savage', 'nuclear'],
+                default: 'savage',
+            },
+            cardTheme: {
+                type: String,
+                default: 'fire',
+            },
+            hideFromLeaderboard: {
+                type: Boolean,
+                default: false,
+            },
+        },
+
+        stats: {
+            totalRoasts: { type: Number, default: 0 },
+            battlesWon: { type: Number, default: 0 },
+            battlesLost: { type: Number, default: 0 },
+            reactionsReceived: { type: Number, default: 0 },
+        },
     },
     {
         timestamps: true,
     }
 )
+
+userSchema.index({ isPro: 1, proSince: -1 });
 
 userSchema.methods.canRoastToday = function () {
     if (this.isPro) return true
@@ -75,7 +118,20 @@ userSchema.methods.toSafeObject = function () {
         email: this.email,
         avatarUrl: this.avatarUrl,
         isPro: this.isPro,
+        proPlan: this.proPlan || (this.isPro ? 'roaster' : 'none'),
         proSince: this.proSince,
+        badges: this.badges || [],
+        customPreferences: this.customPreferences || {
+            defaultIntensity: 'savage',
+            cardTheme: 'fire',
+            hideFromLeaderboard: false,
+        },
+        stats: {
+            totalRoasts: this.stats?.totalRoasts || this.roastCount || 0,
+            battlesWon: this.stats?.battlesWon || 0,
+            battlesLost: this.stats?.battlesLost || 0,
+            reactionsReceived: this.stats?.reactionsReceived || 0,
+        },
     }
 }
 

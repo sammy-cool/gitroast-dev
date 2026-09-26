@@ -168,7 +168,9 @@ export default function ShareButtons({
             const link = document.createElement("a");
             link.download = `gitroast-${username}.png`;
             link.href = canvas.toDataURL("image/png", 1.0);
+            document.body.appendChild(link);
             link.click();
+            document.body.removeChild(link);
 
             createToast({
                 type: "success",
@@ -224,10 +226,15 @@ export default function ShareButtons({
 
             {}
             <div className="share-buttons">
-                <button className="btn btn-primary share-btn" onClick={handleShare}>
+                <button
+                    type="button"
+                    className="btn btn-primary share-btn"
+                    onClick={handleShare}
+                >
                     {copied ? "✓ Copied!" : "🔥 Share Roast"}
                 </button>
                 <button
+                    type="button"
                     className="btn btn-twitter share-btn"
                     onClick={handleTwitterShare}
                     title="Share on Twitter / X"
@@ -239,6 +246,7 @@ export default function ShareButtons({
             {}
             <div className="secondary-buttons">
                 <button
+                    type="button"
                     className={`btn download-btn ${isPro ? "download-btn--pro" : "download-btn--free"}`}
                     onClick={handleDownload}
                     disabled={downloading}

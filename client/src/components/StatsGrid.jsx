@@ -1,4 +1,6 @@
 export default function StatsGrid({ stats }) {
+    if (!Array.isArray(stats) || stats.length === 0) return null
+
     return (
         <div className="stats-grid">
             {stats.map((stat, i) => (

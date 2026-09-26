@@ -1,7 +1,7 @@
 'use client'
 
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { createToast } from 'customizable-toast-notification'
 
@@ -18,6 +18,16 @@ export default function PaymentFlow({ planId, onClose }) {
     const [status, setStatus] = useState('sdk_loading')
     const [errorMsg, setErrorMsg] = useState('')
     const [planInfo, setPlanInfo] = useState(null)
+
+    const closeTimerRef = useRef(null)
+
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) {
+                clearTimeout(closeTimerRef.current)
+            }
+        }
+    }, [])
 
     useEffect(() => {
         if (window.Razorpay) { setStatus('ready'); return }
@@ -160,7 +170,9 @@ export default function PaymentFlow({ planId, onClose }) {
                 duration: 5000,
             })
 
-            setTimeout(() => onClose(), 2000)
+            closeTimerRef.current = setTimeout(() => {
+                if (typeof onClose === 'function') onClose()
+            }, 2000)
 
         } catch (err) {
             setStatus('error')
@@ -225,12 +237,13 @@ export default function PaymentFlow({ planId, onClose }) {
                 </p>
                 <div style={{ display: 'flex', gap: '10px' }}>
                     <button
+                        type="button"
                         className="btn btn-primary"
                         onClick={() => { setStatus('ready'); setErrorMsg('') }}
                     >
                         Try Again
                     </button>
-                    <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
                 </div>
                 <style jsx>{STYLES}</style>
             </div>
@@ -278,6 +291,7 @@ export default function PaymentFlow({ planId, onClose }) {
 
             {}
             <button
+                type="button"
                 className="btn btn-primary pf-pay-btn"
                 onClick={handlePayment}
             >
@@ -288,7 +302,7 @@ export default function PaymentFlow({ planId, onClose }) {
                 🔒 Secured by Razorpay · PCI DSS compliant
             </p>
 
-            <button className="btn btn-ghost pf-cancel" onClick={onClose}>
+            <button type="button" className="btn btn-ghost pf-cancel" onClick={onClose}>
                 ← Cancel
             </button>
 

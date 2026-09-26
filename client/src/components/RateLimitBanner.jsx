@@ -4,20 +4,33 @@
 import { useState, useEffect } from 'react'
 
 export default function RateLimitBanner({ seconds, onExpired }) {
+    const [prevSeconds, setPrevSeconds] = useState(seconds)
     const [remaining, setRemaining] = useState(seconds)
 
+    if (seconds !== prevSeconds) {
+        setPrevSeconds(seconds)
+        setRemaining(seconds)
+    }
+
     useEffect(() => {
-        if (remaining <= 0) {
+        if (seconds <= 0) {
             onExpired?.()
             return
         }
 
         const timer = setInterval(() => {
-            setRemaining(prev => Math.max(0, prev - 1))
+            setRemaining(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer)
+                    onExpired?.()
+                    return 0
+                }
+                return prev - 1
+            })
         }, 1000)
 
         return () => clearInterval(timer)
-    }, [remaining, onExpired])
+    }, [seconds, onExpired])
 
     const totalSecs = seconds > 0 ? seconds : 1
     const percentage = Math.min(100, Math.max(0, Math.round((remaining / totalSecs) * 100)))

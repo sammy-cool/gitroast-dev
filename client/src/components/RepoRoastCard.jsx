@@ -16,7 +16,15 @@ export default function RepoRoastCard({ data, onProClick }) {
   const intervalRef = useRef(null)
   const cursorTimerRef = useRef(null)
 
-  const roastText = data.roast || ''
+  const roastText = data?.roast || ''
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!roastText) return
@@ -108,6 +116,8 @@ export default function RepoRoastCard({ data, onProClick }) {
     })
   }
 
+  if (!data) return null;
+
   const scoreColor =
     data.score < 40 ? 'var(--bad)' : data.score < 70 ? 'var(--warn)' : 'var(--good)'
 
@@ -123,6 +133,10 @@ export default function RepoRoastCard({ data, onProClick }) {
             className="repo-avatar"
             crossOrigin="anonymous"
             loading="eager"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="54" height="54" viewBox="0 0 54 54"><rect width="54" height="54" rx="12" fill="%231a1a1a"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="monospace" font-size="20" fill="%23ff6b00">📦</text></svg>';
+            }}
           />
           <div>
             <div className="repo-title font-display">
@@ -233,6 +247,29 @@ export default function RepoRoastCard({ data, onProClick }) {
           &rdquo;
         </p>
       </div>
+
+      {}
+      {}
+      {}
+      {}
+      {}
+      {}
+      {typingDone && data?.redemptionPlan && data.redemptionPlan.length > 0 && (
+        <div className="redemption-container">
+          <div className="redemption-header font-mono">
+            <span className="redemption-badge">🛠️ ARCHITECT REDEMPTION PLAN</span>
+            <span className="redemption-pill">CODEBASE REPAIRS</span>
+          </div>
+          <div className="redemption-list">
+            {data.redemptionPlan.map((item, idx) => (
+              <div key={idx} className="redemption-row">
+                <span className="redemption-index font-mono">0{idx + 1}</span>
+                <span className="redemption-text">{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {}
       <div className="card-footer">
@@ -471,6 +508,60 @@ export default function RepoRoastCard({ data, onProClick }) {
           vertical-align: text-bottom;
           margin-left: 2px;
         }
+        .redemption-container {
+          padding: 1.2rem 1.5rem;
+          border-top: 1px solid var(--border);
+          background: linear-gradient(180deg, rgba(24, 12, 4, 0.45) 0%, rgba(10, 10, 10, 0.6) 100%);
+        }
+        .redemption-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 12px;
+          gap: 8px;
+        }
+        .redemption-badge {
+          font-size: 11px;
+          color: #ffaa55;
+          letter-spacing: 1px;
+          font-weight: 700;
+        }
+        .redemption-pill {
+          font-size: 9px;
+          padding: 2px 7px;
+          background: rgba(255, 69, 0, 0.12);
+          border: 1px solid rgba(255, 69, 0, 0.3);
+          border-radius: 4px;
+          color: var(--fire);
+          letter-spacing: 0.8px;
+        }
+        .redemption-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .redemption-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 8px 10px;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: var(--radius-sm);
+        }
+        .redemption-index {
+          font-size: 11px;
+          color: var(--fire-warm);
+          font-weight: 700;
+          line-height: 1.4;
+          flex-shrink: 0;
+        }
+        .redemption-text {
+          font-size: 12px;
+          line-height: 1.45;
+          color: var(--text-primary);
+        }
+
         .card-footer {
           display: flex;
           justify-content: space-between;
@@ -489,7 +580,25 @@ export default function RepoRoastCard({ data, onProClick }) {
           display: flex;
           gap: 8px;
         }
-        .action-btn {
+        /*
+          ── WHAT: ────────────────────────────────────────────────────────
+          Styled-JSX parent-scoped :global selector for action buttons and Links.
+
+          ── WHY: ─────────────────────────────────────────────────────────
+          Per AGENTS.md Rule 12, Next.js <Link> renders as a custom React component,
+          meaning styled-jsx cannot inject its scoped hash class onto the <a> tag.
+          Parent-scoping via .share-actions :global(.action-btn) guarantees consistent styling.
+
+          ── WHERE & WHEN TO USE: ─────────────────────────────────────────
+          Any Next.js <Link> with CSS classes styled inside <style jsx>.
+
+          ── USE CASES: ───────────────────────────────────────────────────
+          Repo roast card action buttons.
+
+          ── WHEN NOT TO USE: ─────────────────────────────────────────────
+          Do not use raw unbounded :global(.action-btn) without parent scoping.
+        */
+        .share-actions :global(.action-btn) {
           background: rgba(255, 255, 255, 0.05);
           border: 1px solid var(--border);
           color: var(--text-primary);
@@ -499,17 +608,20 @@ export default function RepoRoastCard({ data, onProClick }) {
           text-decoration: none;
           cursor: pointer;
           transition: all 0.2s;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
-        .action-btn:hover {
+        .share-actions :global(.action-btn:hover) {
           border-color: #ff6b00;
           color: #ff6b00;
         }
-        .action-btn--primary {
+        .share-actions :global(.action-btn--primary) {
           background: #ff4500;
           color: #fff;
           border-color: #ff4500;
         }
-        .action-btn--primary:hover {
+        .share-actions :global(.action-btn--primary:hover) {
           background: #ff6b00;
           color: #fff;
         }

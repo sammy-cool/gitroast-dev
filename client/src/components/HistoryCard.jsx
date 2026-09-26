@@ -1,18 +1,24 @@
 export default function HistoryCard({ roast, index }) {
+    if (!roast) return null
+
     const scoreColor =
         roast.score < 40 ? 'var(--bad)' :
             roast.score < 70 ? 'var(--warn)' :
                 'var(--good)'
 
-    const date = new Date(roast.createdAt)
-        .toLocaleDateString('en-US', {
+    const date = roast.createdAt
+        ? new Date(roast.createdAt).toLocaleDateString('en-US', {
             month: 'short', day: 'numeric', year: 'numeric',
         })
+        : 'Recent'
 
-    const time = new Date(roast.createdAt)
-        .toLocaleTimeString('en-US', {
+    const time = roast.createdAt
+        ? new Date(roast.createdAt).toLocaleTimeString('en-US', {
             hour: '2-digit', minute: '2-digit',
         })
+        : ''
+
+    const roastText = roast.roastText || ''
 
     return (
         <div className="history-card">
@@ -32,14 +38,17 @@ export default function HistoryCard({ roast, index }) {
             {}
             <div className="card-middle">
                 <p className="card-roast">
-                    &ldquo;{roast.roastText.length > 120
-                        ? roast.roastText.slice(0, 120) + '...'
-                        : roast.roastText}&rdquo;
+                    &ldquo;{roastText.length > 120
+                        ? roastText.slice(0, 120) + '...'
+                        : roastText}&rdquo;
                 </p>
                 <p className="card-meta font-mono">
                     {date} at {time}
                     {roast.roastSource === 'ai' && (
                         <span className="ai-tag"> · ⚡ AI</span>
+                    )}
+                    {Array.isArray(roast.redemptionPlan) && roast.redemptionPlan.length > 0 && (
+                        <span className="plan-tag"> · 🛠️ Plan</span>
                     )}
                 </p>
             </div>
@@ -92,6 +101,7 @@ export default function HistoryCard({ roast, index }) {
         }
         .card-meta { font-size: 11px; color: var(--text-muted); }
         .ai-tag    { color: var(--fire-warm); }
+        .plan-tag  { color: #ffaa55; }
         /* Right */
         .card-right  { flex-shrink: 0; }
         .lang-tag {

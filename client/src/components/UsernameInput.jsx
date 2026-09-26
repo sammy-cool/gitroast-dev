@@ -14,7 +14,7 @@ export default function UsernameInput({ onSubmit }) {
 
     function onValid(data) {
         let val = (data.username || '').trim()
-        val = val.replace(/^https?:\/\/github\.com\//i, '').replace(/^github\.com\//i, '').replace(/^\/+|\/+$/g, '')
+        val = val.replace(/^https?:\/\/(?:www\.)?github\.com\//i, '').replace(/^(?:www\.)?github\.com\//i, '').replace(/^\/+|\/+$/g, '')
         onSubmit(val)
     }
 
@@ -38,8 +38,10 @@ export default function UsernameInput({ onSubmit }) {
                 {}
                 <div className="input-prefix font-mono">github.com/</div>
 
+                {}
                 <input
                     type="text"
+                    aria-label="GitHub username or repository (e.g. torvalds/linux)"
                     placeholder="username or owner/repo"
                     autoComplete="off"
                     autoCapitalize="off"
@@ -51,7 +53,7 @@ export default function UsernameInput({ onSubmit }) {
                         minLength: { value: 1, message: 'Too short' },
                         maxLength: { value: 120, message: 'Max 120 chars' },
                         pattern: {
-                            value: /^(?:https?:\/\/)?(?:github\.com\/)?[a-zA-Z0-9-._]+(?:\/[a-zA-Z0-9-._]+)?\/?$/,
+                            value: /^(?:https?:\/\/)?(?:(?:www\.)?github\.com\/)?[a-zA-Z0-9-._]+(?:\/[a-zA-Z0-9-._]+)?\/?$/,
                             message: 'Enter a username or owner/repo (e.g. torvalds/linux)',
                         },
                     })}

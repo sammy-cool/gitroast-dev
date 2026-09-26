@@ -1,10 +1,10 @@
 const { analyzeProfile } = require("./githubService");
 const { generateRoast } = require("./roastEngine");
-const { generateAIRoast } = require("./aiService");
+const { GEMINI_MODEL } = require("./aiService");
 const { logger } = require("../utils/logger");
 
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 async function generateBattleRoast(data1, data2) {
   if (!process.env.GEMINI_API_KEY) return null;
@@ -44,15 +44,49 @@ No quotes. No intro.`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
+            maxOutputTokens: 150,
             temperature: 1.1,
             topP: 0.95,
           },
         }),
-        signal: AbortSignal.timeout(50000),
+        signal: AbortSignal.timeout(10000),
       },
     );
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      logger.error("AI", "Gemini battle API error", { status: res.status, model: GEMINI_MODEL });
+      if (res.status === 404 && GEMINI_MODEL !== "gemini-2.5-flash") {
+        logger.warn("AI", `Battle model ${GEMINI_MODEL} returned 404, falling back to gemini-2.5-flash`);
+        try {
+          const fallbackRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                  maxOutputTokens: 150,
+                  temperature: 1.1,
+                  topP: 0.95,
+                },
+              }),
+              signal: AbortSignal.timeout(10000),
+            },
+          );
+          if (fallbackRes.ok) {
+            const fbJson = await fallbackRes.json();
+            const fbRoast = fbJson?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (fbRoast && fbRoast.length > 20) {
+              return fbRoast.replace(/^["']|["']$/g, "").trim();
+            }
+          }
+        } catch (fbErr) {
+          logger.error("Battle", "AI verdict fallback failed", { message: fbErr.message });
+        }
+      }
+      return null;
+    }
 
     const json = await res.json();
     const roast = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();

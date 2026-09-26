@@ -1,5 +1,6 @@
 'use client'
 
+
 import {
     createContext,
     useContext,
@@ -25,18 +26,18 @@ export function AuthProvider({ children }) {
             })
 
             if (!res.ok) {
-                localStorage.removeItem(TOKEN_KEY)
-                setUser(null)
-                return
+                if (res.status === 401 || res.status === 403) {
+                    try { localStorage.removeItem(TOKEN_KEY); } catch {}
+                    setUser(null);
+                }
+                return;
             }
 
-            const json = await res.json()
-            setUser(json.user)
+            const json = await res.json();
+            setUser(json.user);
         } catch {
-            localStorage.removeItem(TOKEN_KEY)
-            setUser(null)
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
     }, [])
 
@@ -58,11 +59,14 @@ export function AuthProvider({ children }) {
     }, [fetchMe])
 
     const loginWithToken = useCallback((token) => {
-        localStorage.setItem(TOKEN_KEY, token)
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(TOKEN_KEY, token)
+        }
         fetchMe(token)
     }, [fetchMe])
 
     const getToken = useCallback(() => {
+        if (typeof window === 'undefined') return null
         return localStorage.getItem(TOKEN_KEY)
     }, [])
 
@@ -75,7 +79,9 @@ export function AuthProvider({ children }) {
             })
         } catch {
         }
-        localStorage.removeItem(TOKEN_KEY)
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem(TOKEN_KEY)
+        }
         setUser(null)
     }, [getToken])
 

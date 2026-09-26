@@ -1,0 +1,37 @@
+const USERNAME_REGEX = /^[a-zA-Z0-9-._]+$/;
+
+const INTENSITY_LEVELS = ["mild", "savage", "nuclear"];
+const DEFAULT_INTENSITY = "savage";
+
+const ROAST_REACTION_TYPES = ["relatable", "destroyed", "savage"];
+const BATTLE_REACTION_TYPES = ["relatable", "destroyed", "savage"];
+const ALL_REACTION_TYPES = [...new Set([...ROAST_REACTION_TYPES, ...BATTLE_REACTION_TYPES])];
+
+const ROAST_GRADES = ["A", "B", "C", "D", "F", "F-"];
+
+const ERROR_CODES = {
+  USER_NOT_FOUND: "USER_NOT_FOUND",
+  ORGANIZATION_NOT_SUPPORTED: "ORGANIZATION_NOT_SUPPORTED",
+  RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
+  CAPTCHA_REQUIRED: "CAPTCHA_REQUIRED",
+  CAPTCHA_FAILED: "CAPTCHA_FAILED",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  PRO_REQUIRED: "PRO_REQUIRED",
+  INVALID_ID: "INVALID_ID",
+  INVALID_TYPE: "INVALID_TYPE",
+  DUPLICATE_ENTRY: "DUPLICATE_ENTRY",
+  SERVER_ERROR: "SERVER_ERROR",
+};
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    USERNAME_REGEX,
+    INTENSITY_LEVELS,
+    DEFAULT_INTENSITY,
+    ROAST_REACTION_TYPES,
+    BATTLE_REACTION_TYPES,
+    ALL_REACTION_TYPES,
+    ROAST_GRADES,
+    ERROR_CODES,
+  };
+}

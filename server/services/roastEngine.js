@@ -452,6 +452,48 @@ const GHOST_BANK = {
   ],
 };
 
+let loadedRuleCount = 0;
+try {
+  const externalRules = require("../data/roastRules.json");
+  if (externalRules?.rules && Array.isArray(externalRules.rules)) {
+    for (const rule of externalRules.rules) {
+      const { category, intensity, tier, language, text } = rule;
+      if (!text) continue;
+
+      if (category === "opener" && OPENER_BANK[intensity]?.[tier]) {
+        if (!OPENER_BANK[intensity][tier].includes(text)) {
+          OPENER_BANK[intensity][tier].push(text);
+        }
+        loadedRuleCount++;
+      } else if (category === "abandonment" && ABANDON_BANK[intensity]) {
+        if (!ABANDON_BANK[intensity].includes(text)) {
+          ABANDON_BANK[intensity].push(text);
+        }
+        loadedRuleCount++;
+      } else if (category === "commit" && COMMIT_BANK[intensity]) {
+        if (!COMMIT_BANK[intensity].includes(text)) {
+          COMMIT_BANK[intensity].push(text);
+        }
+        loadedRuleCount++;
+      } else if (category === "language" && language) {
+        const targetPack = LANGUAGE_PACKS[language] || LANGUAGE_PACKS.default;
+        if (targetPack && targetPack[intensity]) {
+          if (!targetPack[intensity].includes(text)) {
+            targetPack[intensity].push(text);
+          }
+          loadedRuleCount++;
+        }
+      } else if (category === "closer" && CLOSER_BANK[intensity]?.[tier]) {
+        if (!CLOSER_BANK[intensity][tier].includes(text)) {
+          CLOSER_BANK[intensity][tier].push(text);
+        }
+        loadedRuleCount++;
+      }
+    }
+  }
+} catch {
+}
+
 function generateRoast(data, intensity = "savage") {
   const { score, _raw, repoAnalysis, commitAnalysis } = data;
 
@@ -479,4 +521,8 @@ function generateRoast(data, intensity = "savage") {
   return selected.join(" ");
 }
 
-module.exports = { generateRoast, buildLanguageSection };
+module.exports = {
+  generateRoast,
+  buildLanguageSection,
+  getRoastRulesCount: () => loadedRuleCount,
+};

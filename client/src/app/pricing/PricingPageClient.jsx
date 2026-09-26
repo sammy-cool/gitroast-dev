@@ -9,6 +9,7 @@ import PricingCard from '@/components/PricingCard'
 import GitHubLoginBtn from '@/components/GitHubLoginBtn'
 import Breadcrumb from '@/components/Breadcrumb'
 import { useAuth } from '@/context/AuthContext'
+import { dispatchContactMessage } from '@/services/roastService'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
@@ -69,7 +70,7 @@ const PLANS_DISPLAY = {
 const FAQ = [
     {
         q: 'What counts as a "real AI roast"?',
-        a: 'Free tier uses a rule-based engine — templates + your stats. Pro uses Google Gemini 2.5 Flash with your actual GitHub data, writing a unique comedy roast every time. Not a template. Not a script.',
+        a: 'Free tier uses a rule-based engine — templates + your stats. Pro uses Google Gemini AI (Gemini 3.1 Pro & 2.5 Flash) with your actual GitHub data, writing a unique comedy roast every time. Not a template. Not a script.',
     },
     {
         q: 'Can I cancel anytime?',
@@ -168,8 +169,18 @@ export default function PricingPageClient() {
 
     function handleWaitlist(e) {
         e.preventDefault()
-        if (!waitlistEmail.trim()) return
+        const trimmedEmail = waitlistEmail.trim()
+        if (!trimmedEmail) return
         setWaitlistDone(true)
+
+        dispatchContactMessage({
+            name: 'Squad Waitlist Lead',
+            email: trimmedEmail,
+            category: 'pro',
+            message: 'Requested early access to the GitRoast Squad Tier plan (waitlist signup).',
+        }).catch(() => {
+        })
+
         createToast({
             type: 'success',
             message: "⚔️ You're on the list! We'll notify you when Squad launches.",
@@ -282,7 +293,24 @@ export default function PricingPageClient() {
           display:        flex;
           flex-direction: column;
           align-items:    center;
-          padding:        1.5rem 1rem 6rem;
+          /*
+            ── WHAT: ────────────────────────────────────────────────────────
+            Pricing page container padding.
+
+            ── WHY: ─────────────────────────────────────────────────────────
+            Per AGENTS.md Rule 2.3, the fixed site footer requires at least 6.5rem
+            bottom clearance to prevent CTA buttons and FAQ items from being hidden.
+
+            ── WHERE & WHEN TO USE: ─────────────────────────────────────────
+            Top-level page containers.
+
+            ── USE CASES: ───────────────────────────────────────────────────
+            Pricing page layout rendering.
+
+            ── WHEN NOT TO USE: ─────────────────────────────────────────────
+            Components nested inside sub-containers.
+          */
+          padding:        1.5rem 1rem 6.5rem;
           gap:            2rem;
           position:       relative;
           overflow:       hidden;
@@ -402,7 +430,7 @@ export default function PricingPageClient() {
 
         /* Responsive */
         @media (max-width: 540px) {
-          .pricing-page  { padding: 1.25rem 0.875rem 6rem; gap: 1.5rem; }
+          .pricing-page  { padding: 1.25rem 0.875rem 6.5rem; gap: 1.5rem; }
           .waitlist-form { flex-direction: column; align-items: stretch; }
           .waitlist-btn  { width: 100%; }
           .faq-item      { padding: 1rem 1.25rem; }

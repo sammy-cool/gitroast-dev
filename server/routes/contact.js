@@ -3,11 +3,15 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const ContactMessage = require("../models/ContactMessage");
 const { sendContactNotification } = require("../services/emailService");
+const { enqueue } = require("../services/queueService");
+const { evaluateContactTicket } = require("../services/typeSafeService");
+const { verifyCaptcha } = require("../middleware/captcha");
+const { optionalAuth } = require("../middleware/auth");
 const { logger } = require("../utils/logger");
 
 const VALID_CATEGORIES = ["feedback", "bug", "pro", "dispute", "general"];
 
-router.post("/", async (req, res) => {
+router.post("/", optionalAuth, verifyCaptcha, async (req, res) => {
   try {
     const { category, name, email, message } = req.body || {};
 
@@ -47,7 +51,7 @@ router.post("/", async (req, res) => {
     const safeMessage = message.trim().slice(0, 3000);
 
     const randomCode = Math.floor(100000 + Math.random() * 900000);
-    const ticketId = `GR-${randomCode}`;
+    let ticketId = `GR-${randomCode}`;
 
     const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
       req.socket.remoteAddress ||
@@ -62,25 +66,50 @@ router.post("/", async (req, res) => {
       messageLength: safeMessage.length,
     });
 
+    let priority =
+      safeCategory === "dispute" || safeCategory === "pro"
+        ? "high"
+        : safeCategory === "bug"
+        ? "high"
+        : "normal";
+
+    const triage = await evaluateContactTicket(safeMessage);
+    if (triage.isUrgent) {
+      priority = "urgent";
+    }
+
     let savedToDb = false;
     if (mongoose.connection.readyState === 1) {
-      try {
-        const doc = new ContactMessage({
-          ticketId,
-          category: safeCategory,
-          name: safeName,
-          email: safeEmail,
-          message: safeMessage,
-          ip,
-          userAgent,
-        });
-        await doc.save();
-        savedToDb = true;
-      } catch (dbErr) {
-        logger.warn("Contact", "Failed to save message to MongoDB (falling back to audit log)", {
-          ticketId,
-          error: dbErr.message,
-        });
+      let attempts = 0;
+      while (attempts < 3) {
+        try {
+          const doc = new ContactMessage({
+            ticketId,
+            userId: req.user?._id || null,
+            username: req.user?.username || null,
+            category: safeCategory,
+            priority,
+            name: safeName,
+            email: safeEmail,
+            message: safeMessage,
+            ip,
+            userAgent,
+          });
+          await doc.save();
+          savedToDb = true;
+          break;
+        } catch (dbErr) {
+          if (dbErr.code === 11000 && attempts < 2) {
+            ticketId = `GR-${Math.floor(100000 + Math.random() * 900000)}`;
+            attempts++;
+          } else {
+            logger.warn("Contact", "Failed to save message to MongoDB (falling back to audit log)", {
+              ticketId,
+              error: dbErr.message,
+            });
+            break;
+          }
+        }
       }
     } else {
       logger.info("Contact", "MongoDB disconnected — dispatched message logged to audit stream", {
@@ -88,19 +117,19 @@ router.post("/", async (req, res) => {
       });
     }
 
-    sendContactNotification({
-      ticketId,
-      category: safeCategory,
-      name: safeName,
-      email: safeEmail,
-      message: safeMessage,
-      ip,
-    }).catch((emailErr) => {
-      logger.error("Contact", "Email notification background task failed", {
-        ticketId,
-        error: emailErr.message,
-      });
-    });
+    enqueue(
+      `contact-email-${ticketId}`,
+      () =>
+        sendContactNotification({
+          ticketId,
+          category: safeCategory,
+          name: safeName,
+          email: safeEmail,
+          message: safeMessage,
+          ip,
+        }),
+      { maxRetries: 2 },
+    );
 
     return res.status(201).json({
       success: true,

@@ -53,10 +53,13 @@ export default function CompanyLeaderboardTable({ companies = [] }) {
               <div className="company-info">
                 <div className="company-title-row">
                   {}
+                  {}
                   <img
-                    src={company.avatarUrl}
+                    src={company.avatarUrl || `https://avatars.githubusercontent.com/${company.org}?s=96`}
                     alt={company.name}
                     className="company-avatar"
+                    width={32}
+                    height={32}
                     loading="lazy"
                     crossOrigin="anonymous"
                     onError={(e) => {
@@ -88,13 +91,14 @@ export default function CompanyLeaderboardTable({ companies = [] }) {
                 </span>
               </div>
 
+                {}
               <div className="company-action-col">
                 <Link
-                  href={`/roast/${company.org}`}
+                  href={`/history/${company.org}`}
                   className="btn btn-roast-org font-mono"
-                  title={`Roast ${company.name}'s GitHub`}
+                  title={`View ${company.name}'s roast history`}
                 >
-                  🔥 Roast
+                  🔥 View Roast
                 </Link>
               </div>
             </div>
@@ -229,7 +233,26 @@ export default function CompanyLeaderboardTable({ companies = [] }) {
           display: flex;
           justify-content: flex-end;
         }
-        .btn-roast-org {
+        /*
+          ── WHAT: ────────────────────────────────────────────────────────
+          Parent-scoped :global selector for company roast action Link.
+
+          ── WHY: ─────────────────────────────────────────────────────────
+          Per AGENTS.md Rule 12, Next.js <Link> renders as a custom React component
+          rather than a native DOM element, so styled-jsx does not inject scoped
+          hash classes onto it. Scoping via .company-action-col :global(.btn-roast-org)
+          reliably applies background, borders, and hover states to the anchor.
+
+          ── WHERE & WHEN TO USE: ─────────────────────────────────────────
+          Any Next.js <Link> rendered inside a styled-jsx container.
+
+          ── USE CASES: ───────────────────────────────────────────────────
+          Company leaderboard action buttons.
+
+          ── WHEN NOT TO USE: ─────────────────────────────────────────────
+          Native <button> or <div> elements that receive styled-jsx scope natively.
+        */
+        .company-action-col :global(.btn-roast-org) {
           padding: 6px 12px;
           background: rgba(255, 69, 0, 0.1);
           border: 1px solid rgba(255, 69, 0, 0.3);
@@ -240,8 +263,11 @@ export default function CompanyLeaderboardTable({ companies = [] }) {
           text-decoration: none;
           transition: all 0.15s ease;
           white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
-        .btn-roast-org:hover {
+        .company-action-col :global(.btn-roast-org:hover) {
           background: var(--fire-grad);
           color: #fff;
           border-color: transparent;

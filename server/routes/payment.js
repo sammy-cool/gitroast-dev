@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const Payment = require("../models/Payment");
 const User = require("../models/User");
@@ -101,6 +102,7 @@ router.post("/verify", requireAuth, async (req, res) => {
     }
 
     req.user.isPro = true;
+    req.user.proPlan = planId;
     req.user.proSince = new Date();
     await req.user.save();
 
@@ -151,29 +153,51 @@ router.post("/webhook", async (req, res) => {
       const userId = notes.userId;
       const amount = paymentEntity?.amount || orderEntity?.amount || 0;
 
+      const isValidUserId = userId && mongoose.Types.ObjectId.isValid(userId);
+
       if (paymentId) {
         let paymentDoc = await Payment.findOne({
           razorpayPaymentId: paymentId,
         });
+
         if (!paymentDoc) {
-          await Payment.create({
-            userId: userId || null,
-            razorpayOrderId: orderId || "webhook_captured",
-            razorpayPaymentId: paymentId,
-            planId: planId || "roaster",
-            amount,
-            status: "captured",
-          });
+          if (isValidUserId) {
+            await Payment.create({
+              userId,
+              razorpayOrderId: orderId || "webhook_captured",
+              razorpayPaymentId: paymentId,
+              planId: planId || "roaster",
+              amount,
+              status: "captured",
+            });
+          } else {
+            const existingOrderByOrder = orderId
+              ? await Payment.findOne({ razorpayOrderId: orderId })
+              : null;
+
+            if (existingOrderByOrder) {
+              existingOrderByOrder.razorpayPaymentId = paymentId;
+              existingOrderByOrder.status = "captured";
+              await existingOrderByOrder.save();
+            } else {
+              logger.warn("Payment", "Webhook payment received without valid userId or pre-existing order", {
+                paymentId,
+                orderId,
+                userId,
+              });
+            }
+          }
         } else if (paymentDoc.status !== "captured") {
           paymentDoc.status = "captured";
           await paymentDoc.save();
         }
       }
 
-      if (userId) {
+      if (isValidUserId) {
         const user = await User.findById(userId);
         if (user && !user.isPro) {
           user.isPro = true;
+          user.proPlan = (paymentDoc && paymentDoc.planId) || "roaster";
           user.proSince = new Date();
           await user.save();
           logger.info("Payment", `Pro unlocked via webhook for user ${userId}`);

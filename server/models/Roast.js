@@ -6,7 +6,6 @@ const roastSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      index: true,
     },
 
     roastedBy: {
@@ -44,6 +43,17 @@ const roastSchema = new mongoose.Schema(
       type: String,
       enum: ["mild", "savage", "nuclear"],
       default: "savage",
+    },
+
+    avatarUrl: {
+      type: String,
+      default: null,
+    },
+
+    topLanguage: {
+      type: String,
+      trim: true,
+      default: "",
     },
 
     githubSnapshot: {
@@ -85,6 +95,41 @@ const roastSchema = new mongoose.Schema(
       default: 0,
     },
 
+    viewCount: {
+      type: Number,
+      default: 0,
+    },
+
+    tags: {
+      type: [String],
+      default: [],
+    },
+
+    customTitle: {
+      type: String,
+      default: null,
+    },
+
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+
+    aiModel: {
+      type: String,
+      default: null,
+    },
+
+    generationTimeMs: {
+      type: Number,
+      default: null,
+    },
+
+    redemptionPlan: {
+      type: [String],
+      default: [],
+    },
+
     reactions: {
       relatable: { type: Number, default: 0 },
       destroyed: { type: Number, default: 0 },
@@ -97,14 +142,20 @@ const roastSchema = new mongoose.Schema(
 );
 
 roastSchema.index({ username: 1, createdAt: -1 });
+roastSchema.index({ username: 1, isPinned: -1, createdAt: -1 });
 roastSchema.index({ score: 1, createdAt: -1 });
+roastSchema.index({ topLanguage: 1, score: 1 });
+roastSchema.index({ "githubSnapshot.topLanguage": 1 });
 
 roastSchema.index({ createdAt: -1 });
 
 roastSchema.index({ "reactions.savage": -1, "reactions.destroyed": -1, createdAt: -1 });
 
 roastSchema.statics.getHistory = function (username, limit = 10) {
-  return this.find({ username }).sort({ createdAt: -1 }).limit(limit).lean();
+  return this.find({ username: new RegExp(`^${username}$`, "i") })
+    .sort({ isPinned: -1, createdAt: -1 })
+    .limit(limit)
+    .lean();
 };
 
 roastSchema.statics.getLeaderboard = async function (options = {}) {
@@ -123,7 +174,7 @@ roastSchema.statics.getLeaderboard = async function (options = {}) {
   const skip = (page - 1) * limit;
 
   const result = await this.aggregate([
-    { $project: { username: 1, score: 1 } },
+    { $project: { username: { $toLower: "$username" }, score: 1 } },
     {
       $group: {
         _id: "$username",
@@ -168,13 +219,23 @@ roastSchema.statics.incrementShare = function (id) {
   return this.findByIdAndUpdate(id, { $inc: { shareCount: 1 } });
 };
 
+roastSchema.statics.incrementView = function (id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+  return this.findByIdAndUpdate(
+    id,
+    { $inc: { viewCount: 1 } },
+    { returnDocument: "after", select: "viewCount" }
+  );
+};
+
 roastSchema.statics.addReaction = function (id, type) {
   const allowed = ["relatable", "destroyed", "savage"];
   if (!allowed.includes(type)) throw new Error("Invalid reaction type");
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
   return this.findByIdAndUpdate(
     id,
     { $inc: { [`reactions.${type}`]: 1 } },
-    { new: true, select: "reactions" },
+    { returnDocument: "after", select: "reactions username" },
   );
 };
 

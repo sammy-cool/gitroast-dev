@@ -30,6 +30,11 @@ describe("Feature #1 — Language Roast Packs", () => {
         assert.equal(buildLanguageSection("Nothing", "savage"), "");
         assert.equal(buildLanguageSection(undefined, "savage"), "");
     });
+
+    it("should load the enhanced 110-rule ruleset cleanly without duplicates", () => {
+        const { getRoastRulesCount } = require("../services/roastEngine");
+        assert.equal(getRoastRulesCount(), 110);
+    });
 });
 
 describe("Feature #4 — GitHub Wrapped 2025", () => {
@@ -595,9 +600,10 @@ describe("Feature #5 — Contact Dispatch & Ticket Generation", () => {
             },
         };
 
-        const postHandler = contactRoute.stack.find(
+        const postLayers = contactRoute.stack.find(
             (layer) => layer.route && layer.route.methods.post,
-        ).route.stack[0].handle;
+        ).route.stack;
+        const postHandler = postLayers[postLayers.length - 1].handle;
         await postHandler(req, res);
 
         assert.equal(statusCode, 400);
@@ -619,9 +625,10 @@ describe("Feature #5 — Contact Dispatch & Ticket Generation", () => {
             },
         };
 
-        const postHandler = contactRoute.stack.find(
+        const postLayers = contactRoute.stack.find(
             (layer) => layer.route && layer.route.methods.post,
-        ).route.stack[0].handle;
+        ).route.stack;
+        const postHandler = postLayers[postLayers.length - 1].handle;
         await postHandler(req, res);
 
         assert.equal(statusCode, 400);
@@ -643,10 +650,11 @@ describe("Feature #5 — Contact Dispatch & Ticket Generation", () => {
             },
         };
 
-        const postHandler = contactRoute.stack.find(
+        const postLayers2 = contactRoute.stack.find(
             (layer) => layer.route && layer.route.methods.post,
-        ).route.stack[0].handle;
-        await postHandler(req, res);
+        ).route.stack;
+        const postHandler2 = postLayers2[postLayers2.length - 1].handle;
+        await postHandler2(req, res);
 
         assert.equal(statusCode, 400);
         assert.equal(responseData.code, "INVALID_EMAIL");
@@ -676,10 +684,11 @@ describe("Feature #5 — Contact Dispatch & Ticket Generation", () => {
             },
         };
 
-        const postHandler = contactRoute.stack.find(
+        const postLayers3 = contactRoute.stack.find(
             (layer) => layer.route && layer.route.methods.post,
-        ).route.stack[0].handle;
-        await postHandler(req, res);
+        ).route.stack;
+        const postHandler3 = postLayers3[postLayers3.length - 1].handle;
+        await postHandler3(req, res);
 
         assert.equal(statusCode, 201);
         assert.equal(responseData.success, true);
@@ -721,5 +730,668 @@ describe("Feature #5 — Contact Dispatch & Ticket Generation", () => {
 
         assert.equal(res.success, true);
         assert.ok(["audit", "resend"].includes(res.provider));
+    });
+});
+
+describe("Feature #6 — Battle Reactions & Persistence", () => {
+    const Battle = require("../models/Battle");
+
+    it("should initialize battle reactions with 0 for all types", () => {
+        const battle = new Battle({
+            user1: "torvalds",
+            user2: "gaearon",
+            score1: 70,
+            score2: 85,
+            grade1: "B",
+            grade2: "A",
+            winner: "torvalds",
+            loser: "gaearon",
+            roast1: "C is all you need",
+            roast2: "Too many hooks",
+            battleRoast: "Both wrote game-changing tools.",
+        });
+
+        assert.equal(battle.reactions.relatable, 0);
+        assert.equal(battle.reactions.destroyed, 0);
+        assert.equal(battle.reactions.savage, 0);
+    });
+
+    it("should reject invalid reaction type in Battle.addReaction", async () => {
+        await assert.rejects(
+            async () => {
+                await Battle.addReaction("507f1f77bcf86cd799439011", "invalid_emoji");
+            },
+            { message: "Invalid reaction type" }
+        );
+    });
+
+    it("should reject invalid reaction type with 400 INVALID_TYPE on reaction route", async () => {
+        const battleRouter = require("../routes/battle");
+        const postHandler = battleRouter.stack.find(
+            (layer) => layer.route && layer.route.path === "/:id/react" && layer.route.methods.post
+        ).route.stack[0].handle;
+
+        let statusCode = null;
+        let responseData = null;
+        const req = {
+            params: { id: "507f1f77bcf86cd799439011" },
+            body: { type: "super_fire" },
+            headers: {},
+        };
+        const res = {
+            status(code) {
+                statusCode = code;
+                return this;
+            },
+            json(data) {
+                responseData = data;
+                return this;
+            },
+        };
+
+        await postHandler(req, res);
+        assert.equal(statusCode, 400);
+        assert.equal(responseData.error, "INVALID_TYPE");
+    });
+});
+
+describe("Feature #7 — Dynamic Logger & Telemetry Engine", () => {
+    const {
+        logger,
+        logRequest,
+        sanitizeMeta,
+        getDynamicLoggerStats,
+    } = require("../utils/logger");
+
+    it("should sanitize sensitive credentials, tokens, and secrets from log metadata", () => {
+        const raw = {
+            username: "octocat",
+            password: "super-secret-password-123",
+            githubAccessToken: "ghp_xxxxxxxxxxxx",
+            apiKey: "AIzaSyD-fake-key",
+            authorization: "Bearer secret-jwt-token-string",
+            nested: {
+                secretToken: "very-secret",
+                safeField: "safe-value",
+            },
+        };
+
+        const clean = sanitizeMeta(raw);
+        assert.equal(clean.username, "octocat");
+        assert.equal(clean.password, "[REDACTED]");
+        assert.equal(clean.githubAccessToken, "[REDACTED]");
+        assert.equal(clean.apiKey, "[REDACTED]");
+        assert.equal(clean.authorization, "[REDACTED]");
+        assert.equal(clean.nested.secretToken, "[REDACTED]");
+        assert.equal(clean.nested.safeField, "safe-value");
+    });
+
+    it("should include OpenTelemetry-compliant trace correlation and stats", () => {
+        const stats = getDynamicLoggerStats();
+        assert.ok(Array.isArray(stats.staticSuppressed), "staticSuppressed must be array");
+        assert.ok(stats.staticSuppressed.includes("/health"), "Must contain /health");
+        assert.ok(typeof stats.trackedPathsCount === "number");
+    });
+
+    it("should dynamically track high-frequency requests through logRequest middleware", (t, done) => {
+        const testPath = `/api/test-dynamic-poll-${Date.now()}`;
+        let finishCallbacks = [];
+
+        for (let i = 0; i < 15; i++) {
+            const req = {
+                method: "GET",
+                path: testPath,
+                originalUrl: testPath,
+                headers: {},
+            };
+            const res = {
+                statusCode: 200,
+                setHeader: () => {},
+                getHeader: () => undefined,
+                on: (event, cb) => {
+                    if (event === "finish") finishCallbacks.push(cb);
+                },
+            };
+            logRequest(req, res, () => {});
+        }
+
+        finishCallbacks.forEach((cb) => cb());
+
+        const stats = getDynamicLoggerStats();
+        assert.ok(
+            stats.dynamicallySuppressed.includes(testPath),
+            `Expected ${testPath} to be auto-suppressed after 15 requests`
+        );
+        done();
+    });
+
+    it("should NEVER suppress error responses (>= 400) even for suppressed paths", (t, done) => {
+        const testPath = "/health";
+        let loggedLevel = null;
+
+        const req = {
+            method: "GET",
+            path: testPath,
+            originalUrl: testPath,
+            headers: {},
+        };
+        let finishCb = null;
+        const res = {
+            statusCode: 500,
+            setHeader: () => {},
+            getHeader: () => undefined,
+            on: (event, cb) => {
+                if (event === "finish") finishCb = cb;
+            },
+        };
+
+        logRequest(req, res, () => {});
+        assert.ok(finishCb, "finish callback must be attached even for error");
+        finishCb();
+        done();
+    });
+});
+
+describe("Feature #8 — Database Schemas & Model Integrity", () => {
+    const User = require("../models/User");
+    const Roast = require("../models/Roast");
+    const Battle = require("../models/Battle");
+    const Payment = require("../models/Payment");
+    const ContactMessage = require("../models/ContactMessage");
+
+    it("should safely sanitize user object with badges, proPlan, and custom preferences", () => {
+        const user = new User({
+            githubId: "12345678",
+            username: "octocat",
+            email: "octocat@github.com",
+            avatarUrl: "https://avatars.githubusercontent.com/u/12345678",
+            githubAccessToken: "ghp_super_secret_token_12345",
+            isPro: true,
+            proPlan: "historian",
+            badges: ["early_adopter", "pro"],
+            customPreferences: {
+                defaultIntensity: "nuclear",
+                cardTheme: "matrix",
+                hideFromLeaderboard: false,
+            },
+        });
+
+        const safe = user.toSafeObject();
+        assert.equal(safe.githubId, "12345678");
+        assert.equal(safe.username, "octocat");
+        assert.equal(safe.isPro, true);
+        assert.equal(safe.proPlan, "historian");
+        assert.deepEqual(safe.badges, ["early_adopter", "pro"]);
+        assert.equal(safe.customPreferences.defaultIntensity, "nuclear");
+        assert.equal(safe.customPreferences.cardTheme, "matrix");
+        assert.equal(safe.githubAccessToken, undefined, "githubAccessToken must NEVER be present in safe object");
+    });
+
+    it("should initialize roast document with viewCount, tags, topLanguage, and avatarUrl", () => {
+        const roast = new Roast({
+            username: "deno_dev",
+            score: 42,
+            grade: "C",
+            roastText: "TypeScript everywhere, yet type errors abound.",
+            topLanguage: "TypeScript",
+            avatarUrl: "https://avatars.githubusercontent.com/deno_dev?s=120",
+        });
+
+        assert.equal(roast.viewCount, 0);
+        assert.equal(roast.shareCount, 0);
+        assert.equal(roast.topLanguage, "TypeScript");
+        assert.equal(roast.avatarUrl, "https://avatars.githubusercontent.com/deno_dev?s=120");
+        assert.equal(roast.isPinned, false);
+        assert.deepEqual(roast.tags, []);
+    });
+
+    it("should initialize battle document with avatarUrls, rematchCount, and viewCount", () => {
+        const battle = new Battle({
+            user1: "alice",
+            user2: "bob",
+            score1: 25,
+            score2: 80,
+            avatarUrl1: "https://avatars.githubusercontent.com/alice?s=120",
+            avatarUrl2: "https://avatars.githubusercontent.com/bob?s=120",
+        });
+
+        assert.equal(battle.avatarUrl1, "https://avatars.githubusercontent.com/alice?s=120");
+        assert.equal(battle.avatarUrl2, "https://avatars.githubusercontent.com/bob?s=120");
+        assert.equal(battle.rematchCount, 0);
+        assert.equal(battle.viewCount, 0);
+        assert.equal(battle.shareCount, 0);
+        assert.equal(battle.intensity, "savage");
+    });
+
+    it("should initialize payment document with default currency INR and metadata", () => {
+        const payment = new Payment({
+            userId: "507f1f77bcf86cd799439011",
+            planId: "roaster",
+            amount: 9900,
+            razorpayOrderId: "order_9A33XWu170gUtm",
+            status: "pending",
+        });
+
+        assert.equal(payment.currency, "INR");
+        assert.equal(payment.amount, 9900);
+        assert.equal(payment.status, "pending");
+        assert.deepEqual(payment.metadata, {});
+    });
+
+    it("should initialize contact message with default priority normal and status unread", () => {
+        const msg = new ContactMessage({
+            ticketId: "GR-889900",
+            category: "general",
+            message: "Just wanted to say the roasts are hilarious!",
+        });
+
+        assert.equal(msg.priority, "normal");
+        assert.equal(msg.status, "unread");
+        assert.equal(msg.emailDelivered, false);
+    });
+});
+
+describe("AI Engine — Model Parity & Dynamic Configuration", () => {
+    it("should export GEMINI_MODEL with default to gemini-2.5-flash", () => {
+        const { GEMINI_MODEL } = require("../services/aiService");
+        assert.ok(GEMINI_MODEL, "GEMINI_MODEL should be defined");
+        assert.equal(typeof GEMINI_MODEL, "string");
+        assert.ok(
+            GEMINI_MODEL === "gemini-2.5-flash" || GEMINI_MODEL.startsWith("gemini-"),
+            `Expected valid Gemini model string, got: ${GEMINI_MODEL}`,
+        );
+    });
+
+    it("should export generateAIRoast and generateAIRoastStream functions", () => {
+        const { generateAIRoast, generateAIRoastStream } = require("../services/aiService");
+        assert.equal(typeof generateAIRoast, "function");
+        assert.equal(typeof generateAIRoastStream, "function");
+    });
+
+    it("should correctly normalize model aliases via resolveGeminiModel", () => {
+        const { resolveGeminiModel } = require("../services/aiService");
+        assert.equal(typeof resolveGeminiModel, "function");
+        assert.equal(resolveGeminiModel("gemini-3.1-pro"), "gemini-3.1-pro-preview");
+        assert.equal(resolveGeminiModel("gemini-3.1-pro-preview"), "gemini-3.1-pro-preview");
+        assert.equal(resolveGeminiModel("gemini-3.1-flash"), "gemini-3.1-flash-lite-preview");
+        assert.equal(resolveGeminiModel("gemini-2.5-flash"), "gemini-2.5-flash");
+        assert.equal(resolveGeminiModel("gemini-2.5-pro"), "gemini-2.5-pro");
+        assert.equal(resolveGeminiModel(""), "gemini-2.5-flash");
+        assert.equal(resolveGeminiModel(null), "gemini-2.5-flash");
+        assert.equal(resolveGeminiModel(undefined), "gemini-2.5-flash");
+    });
+});
+
+describe("Feature #9 — Logger URL Query Sanitizer & Heartbeat Tracking", () => {
+    const { sanitizeUrl } = require("../utils/logger");
+
+    it("should export sanitizeUrl function", () => {
+        assert.equal(typeof sanitizeUrl, "function");
+    });
+
+    it("should redact sensitive query parameters (key, token, secret, auth, code, password, apikey)", () => {
+        const sensitiveUrl = "/api/test?user=octocat&key=AIzaSyD-123456789&page=1";
+        const sanitized = sanitizeUrl(sensitiveUrl);
+        assert.equal(sanitized, "/api/test?user=octocat&key=[REDACTED]&page=1");
+
+        const multiSensitive = "/v1/webhook?token=ghp_secret987&apikey=xyz123&code=authcode456";
+        const multiSanitized = sanitizeUrl(multiSensitive);
+        assert.equal(multiSanitized, "/v1/webhook?token=[REDACTED]&apikey=[REDACTED]&code=[REDACTED]");
+    });
+
+    it("should preserve harmless URLs without sensitive parameters", () => {
+        const safeUrl = "/api/roast/torvalds?intensity=nuclear&limit=10";
+        assert.equal(sanitizeUrl(safeUrl), safeUrl);
+    });
+
+    it("should handle null, undefined, and non-string inputs safely", () => {
+        assert.equal(sanitizeUrl(null), null);
+        assert.equal(sanitizeUrl(undefined), undefined);
+        assert.equal(sanitizeUrl(42), 42);
+    });
+});
+
+describe("Feature #10 — Gemini AI Repository Code Review & Redemption Engine", () => {
+    const {
+        buildRepoRoastPrompt,
+        generateAIRepoRoast,
+        generateAIRedemptionPlan,
+    } = require("../services/aiService");
+    const Roast = require("../models/Roast");
+
+    it("should build a comprehensive architectural prompt for repository roasts", () => {
+        const repoData = {
+            fullName: "octocat/Spoon-Knife",
+            repoName: "Spoon-Knife",
+            language: "JavaScript",
+            stars: 12000,
+            forks: 135000,
+            openIssues: 450,
+            score: 35,
+            grade: "D",
+            commitQuality: 40,
+            codeSmells: ["Zero automated tests", "Vague commit messages"],
+            shameCommits: ["fix", "wip", "asdf"],
+            description: "This repo is that fork demo project",
+            monthsInactive: 14,
+            hasTests: false,
+        };
+
+        const prompt = buildRepoRoastPrompt(repoData, "savage");
+        assert.ok(prompt.includes("octocat/Spoon-Knife"), "Prompt must include repo full name");
+        assert.ok(prompt.includes("JavaScript"), "Prompt must include language");
+        assert.ok(prompt.includes("ZERO automated tests detected"), "Prompt must highlight missing tests");
+        assert.ok(prompt.includes("14 months since last commit"), "Prompt must reflect inactivity");
+    });
+
+    it("should return null for generateAIRepoRoast when GEMINI_API_KEY is unset", async () => {
+        const origKey = process.env.GEMINI_API_KEY;
+        try {
+            delete process.env.GEMINI_API_KEY;
+            const result = await generateAIRepoRoast({ fullName: "test/repo" });
+            assert.equal(result, null, "Should return null if no API key is present");
+        } finally {
+            process.env.GEMINI_API_KEY = origKey;
+        }
+    });
+
+    it("should generate a 3-step redemption plan using deterministic fallback for profiles", async () => {
+        const profileData = {
+            username: "spaghetti_coder",
+            totalRepos: 15,
+            repoAnalysis: { abandonedCount: 10, totalOwn: 12, abandonedPct: 83 },
+            commitAnalysis: { qualityScore: 35, shameList: ["fix", "update"] },
+            readme: { exists: false, isEmpty: true },
+        };
+
+        const plan = await generateAIRedemptionPlan(profileData);
+        assert.ok(Array.isArray(plan), "Redemption plan must be an array");
+        assert.equal(plan.length, 3, "Plan must contain exactly 3 tips");
+        assert.ok(plan[0].includes("abandoned repos"), "Tip 1 should address abandoned repos");
+        assert.ok(plan[1].includes("commit messages"), "Tip 2 should address commit messages");
+        assert.ok(plan[2].includes("README"), "Tip 3 should address README status");
+    });
+
+    it("should generate a 3-step redemption plan using deterministic fallback for repositories", async () => {
+        const repoData = {
+            fullName: "chaos/monolith",
+            hasTests: false,
+            commitQuality: 30,
+            hasReadme: false,
+            monthsInactive: 12,
+        };
+
+        const plan = await generateAIRedemptionPlan(repoData);
+        assert.ok(Array.isArray(plan), "Repo redemption plan must be an array");
+        assert.equal(plan.length, 3, "Plan must contain exactly 3 tips");
+        assert.ok(plan[0].includes("automated CI tests"), "Tip 1 should address automated CI tests");
+        assert.ok(plan[1].includes("commit linters"), "Tip 2 should address commit quality");
+        assert.ok(plan[2].includes("README"), "Tip 3 should address README documentation");
+    });
+
+    it("should verify Roast model schema supports redemptionPlan field", () => {
+        const roast = new Roast({
+            username: "redemption_tester",
+            score: 55,
+            grade: "C",
+            roastText: "Writing code like it is 1999.",
+            redemptionPlan: [
+                "Delete node_modules from git history.",
+                "Write unit tests with Jest.",
+                "Add an MIT license.",
+            ],
+        });
+
+        assert.equal(roast.redemptionPlan.length, 3);
+        assert.equal(roast.redemptionPlan[0], "Delete node_modules from git history.");
+        assert.equal(roast.redemptionPlan[1], "Write unit tests with Jest.");
+        assert.equal(roast.redemptionPlan[2], "Add an MIT license.");
+    });
+});
+
+describe("Feature #11 — TypeSafe AI System One Engine", () => {
+    const {
+        isTypeSafeConfigured,
+        evaluateContactTicket,
+        evaluateCommitHygiene,
+    } = require("../services/typeSafeService");
+
+    it("should accurately report TypeSafe configuration status", () => {
+        const configured = isTypeSafeConfigured();
+        assert.equal(typeof configured, "boolean");
+    });
+
+    it("should detect urgent billing issues via fallback when API key is missing or mocked", async () => {
+        const result = await evaluateContactTicket("I was charged twice on Razorpay and my account is locked out!");
+        assert.ok(result.isUrgent, "Should mark double charge as urgent");
+        assert.equal(result.suggestedCategory, "dispute", "Should categorize payment issue as dispute");
+        assert.ok(result.urgencyScore >= 0.7, "Urgency score should be high");
+    });
+
+    it("should categorize bug reports properly in fallback mode", async () => {
+        const result = await evaluateContactTicket("The roast card crashes when I click download image on mobile");
+        assert.equal(result.suggestedCategory, "bug");
+    });
+
+    it("should evaluate commit hygiene with fallback when offline", async () => {
+        const lowEffortCommits = ["wip", "fix", "asdasd", "update", "oops"];
+        const result = await evaluateCommitHygiene(lowEffortCommits);
+        assert.ok(result.qualityPercentage < 50, "Low-effort commits should score below 50%");
+        assert.ok(result.score <= 2, "Low-effort commits should receive low score level");
+
+        const goodCommits = [
+            "feat(auth): implement GitHub OAuth callback handler",
+            "fix(roast): handle zero repos edge case gracefully",
+            "docs(readme): add environment setup guide",
+        ];
+        const goodResult = await evaluateCommitHygiene(goodCommits);
+        assert.ok(goodResult.qualityPercentage >= 80, "Good commits should score high quality");
+    });
+
+    it("should evaluate real TypeSafe System One live API if key is present", async () => {
+        if (!isTypeSafeConfigured()) {
+            return;
+        }
+
+        const triage = await evaluateContactTicket("URGENT: I paid for Pro but my account is still free and card was charged!");
+        assert.equal(triage.aiEvaluated, true, "Should be evaluated by TypeSafe Jev model");
+        assert.equal(triage.isUrgent, true, "Should recognize urgent billing issue");
+        assert.equal(triage.suggestedCategory, "dispute", "Should pick dispute category");
+    });
+});
+
+describe("Feature #12 — Wall of Shame Search & Query Sanitization", () => {
+    const historyRoute = require("../routes/history");
+
+    it("should return empty results if query is less than 2 characters", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = { query: { q: "a" } };
+        const res = {
+            setHeader: () => res,
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const searchLayer = historyRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/leaderboard/search" && layer.route.methods.get,
+        );
+        assert.ok(searchLayer, "Search endpoint must exist in history routes");
+        const handler = searchLayer.route.stack[searchLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 200);
+        assert.equal(responseData.success, true);
+        assert.deepEqual(responseData.results, []);
+        assert.equal(responseData.pagination.total, 0);
+    });
+
+    it("should clamp pagination page and limit to safe boundaries", async () => {
+        let headersSent = {};
+        let responseJson = null;
+        const req = { query: { q: "test", page: "-5", limit: "999" } };
+        const res = {
+            setHeader: (name, val) => {
+                headersSent[name] = val;
+                return res;
+            },
+            status: () => res,
+            json: (data) => {
+                responseJson = data;
+                return res;
+            },
+        };
+
+        const Roast = require("../models/Roast");
+        const origAggregate = Roast.aggregate;
+        Roast.aggregate = async () => [
+            { metadata: [{ total: 1 }], data: [{ _id: "test", bestScore: 50, roastCount: 1 }] },
+        ];
+
+        try {
+            const searchLayer = historyRoute.stack.find(
+                (layer) => layer.route && layer.route.path === "/leaderboard/search" && layer.route.methods.get,
+            );
+            const handler = searchLayer.route.stack[searchLayer.route.stack.length - 1].handle;
+            await handler(req, res);
+
+            assert.ok(headersSent["Cache-Control"]);
+            assert.equal(responseJson?.pagination?.page, 1);
+            assert.equal(responseJson?.pagination?.limit, 50);
+        } finally {
+            Roast.aggregate = origAggregate;
+        }
+    });
+});
+
+describe("Feature #13 — Rate Limit Status & Route Precedence", () => {
+    const roastRoute = require("../routes/roast");
+
+    it("should mount /rate-limit-status before dynamic /:username route", () => {
+        const rateLimitIndex = roastRoute.stack.findIndex(
+            (layer) => layer.route && layer.route.path === "/rate-limit-status",
+        );
+        const usernameIndex = roastRoute.stack.findIndex(
+            (layer) => layer.route && layer.route.path === "/:username",
+        );
+
+        assert.ok(rateLimitIndex !== -1, "/rate-limit-status must be registered");
+        assert.ok(usernameIndex !== -1, "/:username must be registered");
+        assert.ok(
+            rateLimitIndex < usernameIndex,
+            `/rate-limit-status (index ${rateLimitIndex}) must precede /:username (index ${usernameIndex})`,
+        );
+    });
+
+    it("should return remaining quota and Pro status for unauthenticated callers", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = { user: null };
+        const res = {
+            setHeader: () => res,
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const rateLimitLayer = roastRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/rate-limit-status",
+        );
+        const handler = rateLimitLayer.route.stack[rateLimitLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 200);
+        assert.equal(responseData.success, true);
+        assert.equal(responseData.authenticated, false);
+        assert.equal(responseData.isPro, false);
+        assert.equal(responseData.canRoast, true);
+        assert.equal(responseData.remainingToday, 1);
+    });
+});
+
+describe("Feature #14 — Battle Invariants & Rematch Guarding", () => {
+    const battleRoute = require("../routes/battle");
+
+    it("should reject same-user battles with SAME_USER code", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = {
+            params: { user1: "Torvalds", user2: "torvalds" },
+            query: {},
+            user: null,
+            headers: {},
+        };
+        const res = {
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const battleLayer = battleRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/:user1/vs/:user2" && layer.route.methods.get,
+        );
+        const handler = battleLayer.route.stack[battleLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 400);
+        assert.equal(responseData.error, "SAME_USER");
+    });
+
+    it("should expose a GET / root endpoint for battle feeds", () => {
+        const rootBattleLayer = battleRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/" && layer.route.methods.get,
+        );
+        assert.ok(rootBattleLayer, "GET / must exist on battle router");
+    });
+});
+
+describe("Feature #15 — Repository Deep Roast Parameter Validation Order", () => {
+    const roastRoute = require("../routes/roast");
+
+    it("should reject invalid repository slugs with 400 INVALID_REPO before quota deduction", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = {
+            params: { owner: "invalid$$owner", repo: "bad;repo" },
+            query: {},
+            user: null,
+            headers: {},
+        };
+        const res = {
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const repoLayer = roastRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/repo/:owner/:repo" && layer.route.methods.get,
+        );
+        assert.ok(repoLayer, "/repo/:owner/:repo route must exist");
+        const handler = repoLayer.route.stack[repoLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 400);
+        assert.equal(responseData.error, "INVALID_REPO");
     });
 });

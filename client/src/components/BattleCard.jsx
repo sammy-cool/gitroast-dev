@@ -1,10 +1,12 @@
 'use client'
 
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createToast } from 'customizable-toast-notification'
 import { useAuth } from '@/context/AuthContext'
+import { trackBattleShare, trackBattleView } from '@/services/roastService'
+import RoastReactions from './RoastReactions'
 
 export default function BattleCard({ data }) {
     const { user } = useAuth()
@@ -18,27 +20,53 @@ export default function BattleCard({ data }) {
         battleRoast,
         roast1, roast2,
         stats1, stats2,
-    } = data
+    } = data || {}
 
     const score1Color = score1 < score2 ? 'var(--bad)' : 'var(--good)'
     const score2Color = score2 < score1 ? 'var(--bad)' : 'var(--good)'
 
     const isUser1Winner = winner === user1
+    const battleTargetId = data?._id || data?.battleId || (user1 && user2 ? `${user1}-vs-${user2}` : null)
+
+    useEffect(() => {
+        if (battleTargetId) {
+            trackBattleView(battleTargetId)
+        }
+    }, [battleTargetId])
+
+    if (!data || !user1 || !user2) return null;
 
     function handleShare() {
+        if (battleTargetId) trackBattleShare(battleTargetId)
         const url = window.location.href
-        const tweet = `⚔️ GitHub Roast Battle: @${user1} vs @${user2}\n${winner ? `Winner (of shame): @${winner} 💀` : 'It\'s a draw!'}\n\n${url} 🔥 #GitRoast`
+        const tweet = `⚔️ Just challenged @${user2} to a @GitRoast battle! 💀\nCommit hygiene: ${stats1?.commitHygiene || '0%'} vs ${stats2?.commitHygiene || '0%'}.\n\nCheck the verdict or challenge a rival: ${url} 🔥 #GitRoast #DevCommunity`
         window.open(
             `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}`,
             '_blank', 'noopener,noreferrer'
         )
         createToast({
-            type: 'success', message: '🐦 Battle tweet opened!',
+            type: 'success', message: '🐦 Battle challenge opened on Twitter / X!',
             position: 'top-center', duration: 3000,
         })
     }
 
+    function handleChallengeCopy() {
+        if (battleTargetId) trackBattleShare(battleTargetId)
+        const url = window.location.href
+        const challengeMsg = `⚔️ I challenged @${user2} to a GitRoast battle! Check who writes cleaner code: ${url}`
+        navigator.clipboard.writeText(challengeMsg)
+            .then(() => {
+                setCopied(true)
+                createToast({
+                    type: 'success', message: '⚔️ Challenge invitation copied! Paste it in Slack, Discord, or WhatsApp.',
+                    position: 'top-center', showProgressBar: true, duration: 3500,
+                })
+                setTimeout(() => setCopied(false), 2500)
+            })
+    }
+
     function handleCopyLink() {
+        if (battleTargetId) trackBattleShare(battleTargetId)
         navigator.clipboard.writeText(window.location.href)
             .then(() => {
                 setCopied(true)
@@ -93,7 +121,9 @@ export default function BattleCard({ data }) {
             const link = document.createElement('a')
             link.download = `battle-${user1}-vs-${user2}.png`
             link.href = canvas.toDataURL('image/png')
+            document.body.appendChild(link)
             link.click()
+            document.body.removeChild(link)
 
             createToast({
                 type: 'success',
@@ -115,14 +145,22 @@ export default function BattleCard({ data }) {
     }
 
     return (
-        <div className="battle-card card" id="battle-card-capture">
+        <div className="battle-card card">
+            <div id="battle-card-capture">
 
             {}
             <div className="battle-card-header">
                 <p className="battle-card-title font-display text-fire">
                     ⚔️ ROAST BATTLE
                 </p>
-                <p className="battle-card-sub font-mono">gitroast.dev</p>
+                <div className="battle-sub-wrap">
+                    <p className="battle-card-sub font-mono">gitroast.dev</p>
+                    {data.rematchCount > 0 && (
+                        <span className="rematch-tag font-mono">
+                            🔥 Rematch #{data.rematchCount}
+                        </span>
+                    )}
+                </div>
             </div>
 
             {}
@@ -280,15 +318,32 @@ export default function BattleCard({ data }) {
             </div>
 
             {}
+            {battleTargetId && (
+                <div className="battle-reactions-wrap">
+                    <RoastReactions
+                        roastId={battleTargetId}
+                        initialReactions={data.reactions || {}}
+                        targetType="battle"
+                    />
+                </div>
+            )}
+
+            </div>
+
+            {}
+            {}
             <div className="battle-share">
-                <button className="btn btn-primary share-btn" onClick={handleShare}>
-                    𝕏 Tweet Battle
+                <button type="button" className="btn btn-primary share-btn" onClick={handleShare}>
+                    𝕏 Tweet Challenge
                 </button>
-                <button className="btn btn-outline share-btn" onClick={handleDownload} disabled={downloading}>
+                <button type="button" className="btn btn-outline share-btn" onClick={handleChallengeCopy} title="Copy challenge invitation for Discord, Slack, or WhatsApp">
+                    {copied ? '✓ Challenge Copied!' : '⚔️ Challenge Rival'}
+                </button>
+                <button type="button" className="btn btn-outline share-btn" onClick={handleDownload} disabled={downloading}>
                     {downloading ? '⏳ Rendering...' : '📥 Save Card'}
                 </button>
-                <button className="btn btn-ghost share-btn" onClick={handleCopyLink}>
-                    {copied ? '✓ Copied!' : '🔗 Copy Link'}
+                <button type="button" className="btn btn-ghost share-btn" onClick={handleCopyLink}>
+                    🔗 Link
                 </button>
             </div>
 
@@ -306,6 +361,29 @@ export default function BattleCard({ data }) {
             <style jsx>{`
         .battle-card { width: 100%; max-width: 680px; }
 
+        /*
+          ── WHAT: ────────────────────────────────────────────────────────
+          Capture container styling for programmatic image export.
+
+          ── WHY: ─────────────────────────────────────────────────────────
+          Provides a solid background and container boundary so html2canvas
+          exports a pixel-perfect card without transparent borders or artifacts.
+
+          ── WHERE & WHEN TO USE: ─────────────────────────────────────────
+          Applied to the element targeted by document.getElementById for canvas rendering.
+
+          ── USE CASES: ───────────────────────────────────────────────────
+          html2canvas rasterization of battle statistics and verdicts.
+
+          ── WHEN NOT TO USE: ─────────────────────────────────────────────
+          Do not apply interactive hover or active transforms that shift layout during capture.
+        */
+        #battle-card-capture {
+          background: var(--bg-card);
+          overflow: hidden;
+          width: 100%;
+        }
+
         /* Header */
         .battle-card-header {
           padding:       1rem 1.5rem;
@@ -316,7 +394,17 @@ export default function BattleCard({ data }) {
           align-items:   center;
         }
         .battle-card-title { font-size: 28px; }
+        .battle-sub-wrap   { display: flex; align-items: center; gap: 8px; }
         .battle-card-sub   { font-size: 11px; color: var(--text-muted); }
+        .rematch-tag {
+          font-size: 10px;
+          background: rgba(255, 69, 0, 0.15);
+          border: 1px solid rgba(255, 69, 0, 0.35);
+          color: var(--fire);
+          padding: 2px 7px;
+          border-radius: 12px;
+          letter-spacing: 0.3px;
+        }
 
         /* Players row */
         .players-row {
@@ -517,7 +605,12 @@ export default function BattleCard({ data }) {
         }
         .winner-text { font-size: 18px; color: var(--bad); }
 
-        /* Share */
+        /* Reactions */
+        .battle-reactions-wrap {
+          padding: 0.75rem 1.25rem;
+          border-bottom: 1px solid var(--border);
+          background: rgba(0, 0, 0, 0.2);
+        }
         .battle-share {
           padding:  1rem 1.5rem;
           display:  flex;

@@ -39,6 +39,22 @@ export default function BattlePageClient({ user1, user2 }) {
         let cancelled = false
 
         async function fetchBattle() {
+            const pairKey = [(user1 || '').toLowerCase(), (user2 || '').toLowerCase()].sort().join('-vs-')
+            const cacheKey = `gitroast_battle_${pairKey}`
+            try {
+                const cached = sessionStorage.getItem(cacheKey)
+                if (cached) {
+                    const parsed = JSON.parse(cached)
+                    if (Date.now() - parsed.cachedAt < 5 * 60 * 1000) {
+                        if (cancelled) return
+                        setBattleData(parsed.data)
+                        setView('result')
+                        return
+                    }
+                }
+            } catch {
+            }
+
             try {
                 const token = getToken()
 
@@ -48,6 +64,11 @@ export default function BattlePageClient({ user1, user2 }) {
                 ])
 
                 if (cancelled) return
+
+                try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify({ data, cachedAt: Date.now() }))
+                } catch {
+                }
 
                 setBattleData(data)
                 setView('result')
@@ -65,21 +86,24 @@ export default function BattlePageClient({ user1, user2 }) {
             } catch (err) {
                 if (cancelled) return
 
+                const isLoggedIn = !!getToken();
                 if (err.code === 'CAPTCHA_REQUIRED' || err.code === 'CAPTCHA_FAILED') {
                     createToast({
                         type: 'warning',
-                        message: err.message || 'Bot verification blocked by browser shield. Please log in with GitHub to battle!',
+                        message: err.message || (isLoggedIn ? 'Bot verification check could not be completed. Please try again.' : 'Bot verification blocked by browser shield. Please log in with GitHub to battle!'),
                         position: 'top-center',
                         duration: 8000,
                         showCloseButton: true,
-                        cta: {
-                            label: 'Login via GitHub ↗',
-                            onClick: () => {
-                                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-                                window.location.href = `${apiBase}/api/auth/github`
+                        ...(!isLoggedIn && {
+                            cta: {
+                                label: 'Login via GitHub ↗',
+                                onClick: () => {
+                                    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                                    window.location.href = `${apiBase}/api/auth/github`
+                                },
+                                autoClose: true,
                             },
-                            autoClose: true,
-                        },
+                        }),
                     })
                 } else if (err.code === 'RATE_LIMIT_EXCEEDED') {
                     const seconds = err.retryAfter ? `${err.retryAfter} seconds` : 'a minute'
@@ -156,7 +180,8 @@ export default function BattlePageClient({ user1, user2 }) {
           .battle-analyzing {
             min-height: 100vh; display: flex; flex-direction: column;
             align-items: center; justify-content: center;
-            padding: 2rem 1rem; gap: 1.25rem; position: relative;
+            /* WHY 6.5rem bottom padding: prevents fixed site footer from overlapping analyzing terminal on mobile */
+            padding: 2rem 1rem 6.5rem; gap: 1.25rem; position: relative;
           }
           .battle-glow {
             position: absolute; inset: 0;
@@ -232,7 +257,25 @@ export default function BattlePageClient({ user1, user2 }) {
                 <style jsx>{`
           .battle-result {
             min-height: 100vh; display: flex; flex-direction: column;
-            align-items: center; padding: 1.5rem 1rem 6rem; gap: 1.25rem;
+            align-items: center;
+            /*
+              ── WHAT: ────────────────────────────────────────────────────────
+              Battle result page layout padding.
+
+              ── WHY: ─────────────────────────────────────────────────────────
+              Per AGENTS.md Rule 2.3, the fixed site footer requires at least 6.5rem
+              clearance so the battle card and navigation footer are never obscured.
+
+              ── WHERE & WHEN TO USE: ─────────────────────────────────────────
+              Top-level battle results page wrapper.
+
+              ── USE CASES: ───────────────────────────────────────────────────
+              Displaying completed 1v1 battle comparisons.
+
+              ── WHEN NOT TO USE: ─────────────────────────────────────────────
+              Inner battle card components.
+            */
+            padding: 1.5rem 1rem 6.5rem; gap: 1.25rem;
           }
           .battle-nav {
             display: flex; justify-content: space-between; align-items: center;

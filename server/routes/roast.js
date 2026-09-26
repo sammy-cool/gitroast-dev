@@ -3,10 +3,17 @@ const router = express.Router();
 const { analyzeProfile, analyzeWrapped } = require("../services/githubService");
 const { analyzeRepository } = require("../services/repoRoastService");
 const { generateRoast } = require("../services/roastEngine");
-const { generateAIRoast } = require("../services/aiService");
+const {
+  generateAIRoast,
+  generateAIRoastStream,
+  generateAIRedemptionPlan,
+  GEMINI_MODEL,
+} = require("../services/aiService");
 const { optionalAuth, requirePro } = require("../middleware/auth");
 const { verifyCaptcha } = require("../middleware/captcha");
 const Roast = require("../models/Roast");
+const User = require("../models/User");
+const redisService = require("../services/redisService");
 const { logger } = require("../utils/logger");
 
 const processedKeys = new Map();
@@ -101,17 +108,70 @@ router.get("/repo/:owner/:repo", optionalAuth, verifyCaptcha, async (req, res) =
     });
   }
 
-  if (!owner || !repo || owner.length > 39 || repo.length > 100) {
+  const validOwner = /^[a-zA-Z0-9-]+$/.test(owner || "");
+  const validRepo = /^[a-zA-Z0-9._-]+$/.test(repo || "");
+  if (!owner || !repo || owner.length > 39 || repo.length > 100 || !validOwner || !validRepo) {
     return res.status(400).json({
       error: "INVALID_REPO",
       message: "Invalid repository owner or name.",
     });
   }
 
+  if (req.user && !isPro) {
+    const canRoast = req.user.canRoastToday();
+    if (!canRoast) {
+      return res.status(429).json({
+        error: "DAILY_LIMIT_REACHED",
+        message: "Free users get 1 roast per day. Go Pro for unlimited! ⚡",
+      });
+    }
+  }
+
+  const idempotencyKey = req.headers["x-idempotency-key"];
+  if (idempotencyKey) {
+    if (processedKeys.has(idempotencyKey)) {
+      return res.status(200).json(processedKeys.get(idempotencyKey).response);
+    }
+    if (redisService.isConfigured) {
+      const cached = await redisService.get(`idemp:${idempotencyKey}`).catch(() => null);
+      if (cached) {
+        return res.status(200).json(cached);
+      }
+    }
+  }
+
   try {
     const userToken = req.user?.githubAccessToken || null;
     const repoAnalysis = await analyzeRepository(owner, repo, userToken, isPro, intensity);
-    return res.status(200).json({ success: true, data: repoAnalysis });
+
+    if (req.user) {
+      req.user.roastCount += 1;
+      req.user.lastRoastDate = new Date();
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: { roastCount: 1, "stats.totalRoasts": 1 },
+        $set: { lastRoastDate: req.user.lastRoastDate },
+      }).catch((e) =>
+        logger.error("RepoRoast", "User atomic update failed", { message: e.message })
+      );
+    }
+
+    const responseData = { success: true, data: repoAnalysis };
+
+    if (idempotencyKey) {
+      if (processedKeys.size >= 1000) {
+        const firstKey = processedKeys.keys().next().value;
+        processedKeys.delete(firstKey);
+      }
+      processedKeys.set(idempotencyKey, {
+        response: responseData,
+        time: Date.now(),
+      });
+      if (redisService.isConfigured) {
+        redisService.set(`idemp:${idempotencyKey}`, responseData, 60).catch(() => {});
+      }
+    }
+
+    return res.status(200).json(responseData);
   } catch (err) {
     if (err.message === "REPO_NOT_FOUND" || err.code === "REPO_NOT_FOUND") {
       return res.status(404).json({
@@ -133,6 +193,207 @@ router.get("/repo/:owner/:repo", optionalAuth, verifyCaptcha, async (req, res) =
   }
 });
 
+router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) => {
+  const { username } = req.params;
+  const isPro = req.user?.isPro || false;
+  const rawIntensity = req.query.intensity || "savage";
+  const intensity = ["mild", "savage", "nuclear"].includes(rawIntensity) ? rawIntensity : "savage";
+
+  if (intensity === "nuclear" && !isPro) {
+    return res.status(403).json({
+      error: "PRO_REQUIRED",
+      message: "☢️ Nuclear intensity requires Pro.",
+    });
+  }
+
+  if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
+    return res.status(400).json({
+      error: "INVALID_USERNAME",
+      message: "Invalid GitHub username format.",
+    });
+  }
+
+  if (req.user && !isPro) {
+    const canRoast = req.user.canRoastToday();
+    if (!canRoast) {
+      return res.status(429).json({
+        error: "DAILY_LIMIT_REACHED",
+        message: "Free users get 1 roast per day. Go Pro for unlimited! ⚡",
+      });
+    }
+  }
+
+  let data;
+  try {
+    const githubToken = req.user?.githubAccessToken || null;
+    const authUsername = req.user?.username || null;
+    data = await analyzeProfile(username, githubToken, authUsername, isPro);
+  } catch (err) {
+    if (err.message === "ORGANIZATION_NOT_SUPPORTED" || err.code === "ORGANIZATION_NOT_SUPPORTED") {
+      return res.status(400).json({
+        error: "ORGANIZATION_NOT_SUPPORTED",
+        message: "GitRoast only roasts individual developers, not organizations.",
+      });
+    }
+    if (err.message === "USER_NOT_FOUND" || err.code === "USER_NOT_FOUND") {
+      return res.status(404).json({
+        error: "USER_NOT_FOUND",
+        message: "GitHub user not found. Check the username and try again.",
+      });
+    }
+    if (err.message === "RATE_LIMIT_EXCEEDED" || err.code === "RATE_LIMIT_EXCEEDED") {
+      return res.status(429).json({
+        error: "RATE_LIMIT_EXCEEDED",
+        message: "GitHub API rate limit exceeded. Log in with GitHub for a dedicated quota!",
+      });
+    }
+    return res.status(500).json({
+      error: "SERVER_ERROR",
+      message: err.message || "Failed to analyze profile.",
+    });
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+
+  try {
+    res.write(
+      `event: metadata\ndata: ${JSON.stringify({
+        username: data.username,
+        score: data.score,
+        grade: data.grade,
+        joinYear: data.joinYear,
+        totalRepos: data.totalRepos,
+        stats: data.stats,
+        shameCommits: data.shameCommits,
+        bioContrast: data.bioContrast,
+        avatarUrl: data.avatarUrl,
+        isPro,
+      })}\n\n`
+    );
+
+    let fullRoast = "";
+    let roastSource = "rules";
+    let clientAborted = false;
+    req.on("close", () => {
+      clientAborted = true;
+    });
+
+    if (isPro && process.env.GEMINI_API_KEY) {
+      roastSource = "ai";
+      for await (const chunk of generateAIRoastStream(data, intensity)) {
+        if (clientAborted || res.writableEnded || res.destroyed) break;
+        fullRoast += chunk;
+        res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+      }
+    }
+
+    if (!fullRoast && !clientAborted && !res.writableEnded && !res.destroyed) {
+      fullRoast = generateRoast(data, intensity);
+      roastSource = "rules";
+      res.write(`event: chunk\ndata: ${JSON.stringify({ text: fullRoast })}\n\n`);
+    }
+
+    let redemptionPlan = [];
+    if (isPro) {
+      try {
+        redemptionPlan = await generateAIRedemptionPlan(data);
+      } catch (e) {
+        logger.warn("RoastStream", "Failed to generate redemption plan", { message: e.message });
+      }
+    }
+
+    if (clientAborted || !fullRoast || fullRoast.trim().length < 20) {
+      logger.warn("RoastStream", `Stream aborted or incomplete for ${data.username} — skipping save`);
+      return;
+    }
+
+    const newRoast = await Roast.create({
+      username: data.username,
+      roastedBy: req.user?._id || null,
+      score: data.score,
+      grade: data.grade,
+      roastText: fullRoast,
+      intensity,
+      roastSource,
+      avatarUrl: data.avatarUrl || `https://avatars.githubusercontent.com/${data.username}?s=120`,
+      topLanguage: data._raw?.topLanguage || data.topLanguage || "",
+      aiModel: roastSource === "ai" ? GEMINI_MODEL : "rules-engine",
+      githubSnapshot: {
+        totalRepos: data.totalRepos,
+        joinYear: data.joinYear,
+        followers: data.followers || 0,
+        topLanguage: data._raw?.topLanguage || "",
+        abandonedCount: data.repoAnalysis?.abandonedCount || 0,
+        commitQuality: data.commitAnalysis?.qualityScore || 0,
+        totalStars: data._raw?.totalStars || 0,
+        hasReadme: data.readme?.exists || false,
+      },
+      stats: data.stats,
+      shameCommits: data.shameCommits,
+      bioContrast: data.bioContrast || {},
+      redemptionPlan,
+      isPro,
+    });
+
+    if (req.user) {
+      req.user.roastCount += 1;
+      req.user.lastRoastDate = new Date();
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: { roastCount: 1, "stats.totalRoasts": 1 },
+        $set: { lastRoastDate: req.user.lastRoastDate },
+      }).catch((e) =>
+        logger.error("RoastStream", "User atomic update failed", { message: e.message }),
+      );
+    }
+
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(
+        `event: done\ndata: ${JSON.stringify({
+          roastId: newRoast._id,
+          fullRoast,
+          roastSource,
+          redemptionPlan,
+        })}\n\n`
+      );
+      res.end();
+    }
+  } catch (err) {
+    logger.error("RoastStream", `Stream failed for ${username}`, { message: err.message });
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: err.message || "Roast failed" })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+router.get("/rate-limit-status", optionalAuth, async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, private");
+
+  const isPro = req.user?.isPro || false;
+  const isAuthenticated = Boolean(req.user);
+  let canRoast = true;
+  let remainingToday = isPro ? Infinity : 1;
+
+  if (isAuthenticated && !isPro) {
+    canRoast = req.user.canRoastToday();
+    remainingToday = canRoast ? 1 : 0;
+  }
+
+  return res.status(200).json({
+    success: true,
+    authenticated: isAuthenticated,
+    isPro,
+    canRoast,
+    remainingToday: isPro ? "unlimited" : remainingToday,
+    plan: req.user?.proPlan || (isPro ? "roaster" : "free"),
+    resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString(),
+  });
+});
+
 router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
   const { username } = req.params;
   const isPro = req.user?.isPro || false;
@@ -151,8 +412,16 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     });
   }
 
-  if (idempotencyKey && processedKeys.has(idempotencyKey)) {
-    return res.status(200).json(processedKeys.get(idempotencyKey).response);
+  if (idempotencyKey) {
+    if (processedKeys.has(idempotencyKey)) {
+      return res.status(200).json(processedKeys.get(idempotencyKey).response);
+    }
+    if (redisService.isConfigured) {
+      const cached = await redisService.get(`idemp:${idempotencyKey}`).catch(() => null);
+      if (cached) {
+        return res.status(200).json(cached);
+      }
+    }
   }
 
   if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
@@ -199,6 +468,16 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     data.roastSource = roastSource;
     data.intensity = intensity;
 
+    let redemptionPlan = [];
+    if (isPro) {
+      try {
+        redemptionPlan = await generateAIRedemptionPlan(data);
+      } catch (e) {
+        logger.warn("Roast", "Failed to generate redemption plan", { message: e.message });
+      }
+    }
+    data.redemptionPlan = redemptionPlan;
+
     try {
       const savedRoast = await Roast.create({
         username,
@@ -208,6 +487,9 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
         roastText: roast,
         roastSource,
         intensity,
+        avatarUrl: data.avatarUrl || `https://avatars.githubusercontent.com/${username}?s=120`,
+        topLanguage: data._raw?.topLanguage || data.topLanguage || "",
+        aiModel: roastSource === "ai" ? GEMINI_MODEL : "rules-engine",
         githubSnapshot: {
           totalRepos: data.totalRepos,
           joinYear: data.joinYear,
@@ -221,9 +503,11 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
         stats: data.stats,
         shameCommits: data.shameCommits,
         bioContrast: data.bioContrast || {},
+        redemptionPlan,
         isPro,
       });
       data.roastId = savedRoast._id;
+      data.avatarUrl = savedRoast.avatarUrl;
       data.reactions = savedRoast.reactions || {
         relatable: 0,
         destroyed: 0,
@@ -236,11 +520,12 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     if (req.user) {
       req.user.roastCount += 1;
       req.user.lastRoastDate = new Date();
-      await req.user
-        .save()
-        .catch((e) =>
-          logger.error("Roast", "User save failed", { message: e.message }),
-        );
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: { roastCount: 1, "stats.totalRoasts": 1 },
+        $set: { lastRoastDate: req.user.lastRoastDate },
+      }).catch((e) =>
+        logger.error("Roast", "User atomic update failed", { message: e.message }),
+      );
     }
 
     const responseData = { success: true, data };
@@ -254,6 +539,10 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
         response: responseData,
         time: Date.now(),
       });
+
+      if (redisService.isConfigured) {
+        redisService.set(`idemp:${idempotencyKey}`, responseData, 60).catch(() => {});
+      }
     }
 
     return res.status(200).json(responseData);

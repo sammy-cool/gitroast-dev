@@ -20,6 +20,11 @@ const paymentSchema = new mongoose.Schema(
       required: true,
     },
 
+    currency: {
+      type: String,
+      default: "INR",
+    },
+
     razorpayOrderId: {
       type: String,
       index: true,
@@ -30,6 +35,37 @@ const paymentSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
       index: true,
+    },
+
+    customerEmail: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    receipt: {
+      type: String,
+      default: null,
+    },
+
+    invoiceId: {
+      type: String,
+      default: null,
+    },
+
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    refundReason: {
+      type: String,
+      default: null,
+    },
+
+    refundedAt: {
+      type: Date,
+      default: null,
     },
 
     status: {
@@ -45,5 +81,6 @@ const paymentSchema = new mongoose.Schema(
 );
 
 paymentSchema.index({ userId: 1, createdAt: -1 });
+paymentSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Payment", paymentSchema);

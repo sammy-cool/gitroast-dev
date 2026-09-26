@@ -48,6 +48,13 @@ async function verifyCaptcha(req, res, next) {
         signal: AbortSignal.timeout(5000),
       });
 
+      if (googleRes.status && googleRes.status >= 500) {
+        logger.warn("Captcha", `Google reCAPTCHA Enterprise returned HTTP ${googleRes.status} — failing open`, {
+          status: googleRes.status,
+        });
+        return next();
+      }
+
       const data = await googleRes.json();
 
       if (data.tokenProperties) {
@@ -69,6 +76,13 @@ async function verifyCaptcha(req, res, next) {
         }),
         signal: AbortSignal.timeout(5000),
       });
+
+      if (googleRes.status && googleRes.status >= 500) {
+        logger.warn("Captcha", `Google reCAPTCHA v3 returned HTTP ${googleRes.status} — failing open`, {
+          status: googleRes.status,
+        });
+        return next();
+      }
 
       const data = await googleRes.json();
       isValid = data.success === true;

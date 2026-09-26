@@ -45,7 +45,7 @@ const INTENSITIES = [
 ];
 
 export default function LandingPageClient() {
-  const { user, loginWithGitHub } = useAuth();
+  const { user, loginWithGitHub, loading: authLoading } = useAuth();
   const [showProModal, setShowProModal] = useState(false);
   const [totalRoasts, setTotalRoasts] = useState(null);
   const [dailyRoast, setDailyRoast] = useState(null);
@@ -91,6 +91,7 @@ export default function LandingPageClient() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     if (
       !user &&
       typeof window !== "undefined" &&
@@ -110,7 +111,7 @@ export default function LandingPageClient() {
       });
       sessionStorage.setItem("gitroast_login_broadcast", "1");
     }
-  }, [user, loginWithGitHub]);
+  }, [authLoading, user, loginWithGitHub]);
 
   useEffect(() => {
     getRoastStats().then((total) => {
@@ -197,7 +198,7 @@ export default function LandingPageClient() {
       </nav>
 
       {}
-      {!user && !broadcastDismissed && (
+      {!authLoading && !user && !broadcastDismissed && (
         <div className="broadcast-banner font-mono" role="status">
           <div className="broadcast-left">
             <span className="broadcast-pill">NOTICE ⚡</span>
@@ -321,7 +322,7 @@ export default function LandingPageClient() {
           <p className="sample-roast-label font-mono">🔥 ROAST OF THE DAY</p>
           {dailyRoast && (
             <span className="daily-badge font-mono">
-              🔥 {(dailyRoast.reactions?.savage || 0) + (dailyRoast.reactions?.destroyed || 0)} BURNS
+              🔥 {(dailyRoast.reactions?.savage || 0) + (dailyRoast.reactions?.destroyed || 0) + (dailyRoast.reactions?.relatable || 0)} BURNS
             </span>
           )}
         </div>
@@ -332,7 +333,10 @@ export default function LandingPageClient() {
               src={dailyRoast.avatarUrl || `https://avatars.githubusercontent.com/${dailyRoast.username}?s=96`}
               alt={`@${dailyRoast.username}`}
               className="daily-avatar"
+              width={36}
+              height={36}
               loading="lazy"
+              crossOrigin="anonymous"
             />
             <div className="daily-author-info">
               <Link
@@ -691,16 +695,36 @@ export default function LandingPageClient() {
           margin: 0;
         }
 
+        /* ── Mobile Viewport Optimization (<600px) ── */
+        /* WHAT: Streamlined vertical layout ensuring Username Input is immediately prominent above the fold */
+        /* WHY: Eliminates excess vertical padding and shrinks button heights on compact mobile displays */
         @media (max-width: 600px) {
           .landing-page {
-            padding-top: 0.85rem;
-            gap: 1rem;
+            padding-top: 0.75rem;
+            gap: 0.85rem;
           }
           .landing-logo {
-            margin-top: 0.25rem;
+            margin-top: 0.2rem;
           }
           .status-label {
             display: none;
+          }
+          .intensity-wrap {
+            gap: 6px;
+          }
+          .intensity-btn {
+            padding: 8px 4px;
+            gap: 2px;
+          }
+          .intensity-emoji {
+            font-size: 16px;
+          }
+          .intensity-name {
+            font-size: 11px;
+          }
+          .intensity-desc {
+            font-size: 11px;
+            margin-top: -2px;
           }
         }
       `}</style>

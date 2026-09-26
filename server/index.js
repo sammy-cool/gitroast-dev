@@ -12,7 +12,7 @@ const {
   battleLimiter,
   generalLimiter,
 } = require("./middleware/rateLimiter");
-const { logger, logRequest, attachProcessHandlers } = require("./utils/logger");
+const { logger, logRequest, recordHealthPing, attachProcessHandlers } = require("./utils/logger");
 const { startKeepAlive } = require("./services/keepAliveService");
 
 attachProcessHandlers();
@@ -78,6 +78,8 @@ app.use(
 );
 
 app.get(["/health", "/api/health"], (req, res) => {
+  recordHealthPing();
+
   res.json({
     status: "🔥 GitRoast server is alive",
     time: new Date().toISOString(),
@@ -103,7 +105,7 @@ app.use(logRequest);
 app.use("/api", generalLimiter);
 
 app.use("/api/roast", roastLimiter, require("./routes/roast"));
-app.use("/api/auth", authLimiter, require("./routes/auth"));
+app.use("/api/auth", require("./routes/auth"));
 app.use("/api/history", require("./routes/history"));
 app.use("/api/payment", require("./routes/payment"));
 app.use("/api/battle", battleLimiter, require("./routes/battle"));
@@ -115,6 +117,9 @@ app.use(errorHandler);
 mongoose
   .connect(process.env.MONGODB_URI, {
     serverSelectionTimeoutMS: 5000,
+    maxPoolSize: 20,
+    minPoolSize: 2,
+    socketTimeoutMS: 45000,
   })
   .then(() => {
     logger.info("MongoDB", "✅ Connected to Atlas");
