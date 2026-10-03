@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createToast } from 'customizable-toast-notification'
+import { toast } from '@/utils/toast'
 import StatsGrid from './StatsGrid'
 import CommitShame from './CommitShame'
 import ShareButtons from './ShareButtons'
@@ -37,12 +37,7 @@ export default function RoastCard({ data, onProClick }) {
 
   function handleVoiceRoast() {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      createToast({
-        type: 'warning',
-        message: 'Speech synthesis is not supported on this device/browser.',
-        position: 'top-center',
-        duration: 3500,
-      })
+      toast.warning('Speech synthesis is not supported on this device/browser.')
       return
     }
 
@@ -72,12 +67,7 @@ export default function RoastCard({ data, onProClick }) {
 
     window.speechSynthesis.speak(utterance)
 
-    createToast({
-      type: 'info',
-      message: '🔊 Playing roast aloud... Turn up the volume!',
-      position: 'top-center',
-      duration: 3000,
-    })
+    toast.info('🔊 Playing roast aloud... Turn up the volume!')
   }
 
   useEffect(() => {
@@ -216,6 +206,14 @@ export default function RoastCard({ data, onProClick }) {
               <p className="roast-text-label font-mono">🔥 The Roast</p>
               {data.roastSource === 'ai' && (
                 <span className="ai-badge font-mono">⚡ AI Roast</span>
+              )}
+              {data.persona && data.persona !== 'classic' && (
+                <span className="persona-badge font-mono">
+                  {data.persona === 'hinglish' && '🇮🇳 Desi Hinglish'}
+                  {data.persona === 'techbro' && '👔 Tech Bro'}
+                  {data.persona === 'ramsay' && '👨‍🍳 Gordon Ramsay'}
+                  {data.persona === 'shakespearean' && '🎭 Shakespearean'}
+                </span>
               )}
             </div>
             {typingDone && (
@@ -483,6 +481,15 @@ export default function RoastCard({ data, onProClick }) {
           border-radius:  4px;
           color:          var(--fire-warm);
           letter-spacing: 1px;
+        }
+        .persona-badge {
+          font-size:      9px;
+          padding:        2px 8px;
+          background:     rgba(255, 107, 0, 0.12);
+          border:         1px solid rgba(255, 107, 0, 0.35);
+          border-radius:  4px;
+          color:          var(--fire);
+          letter-spacing: 0.5px;
         }
         .card-brand {
           padding:        8px 1.5rem;

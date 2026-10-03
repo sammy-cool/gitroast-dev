@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { createToast } from 'customizable-toast-notification';
+import { toast } from '@/utils/toast';
 import LeaderboardTable from '@/components/LeaderboardTable';
 import CompanyLeaderboardTable from '@/components/CompanyLeaderboardTable';
 import Pagination from '@/components/Pagination';
@@ -209,11 +209,12 @@ export default function LeaderboardClient() {
     } catch {
       setEntries([]);
       setError(true);
-      createToast({
-        type: 'error',
-        message: 'Could not load leaderboard. The server may be warming up. Please try again.',
-        position: 'top-center',
-        duration: 4000,
+      toast.error('Could not load leaderboard. The server may be warming up. Please try again.', {
+        cta: {
+          label: 'Retry 🔄',
+          onClick: () => fetchPage(targetPage),
+          autoClose: true,
+        },
       });
     } finally {
       hasLoadedRef.current = true;
@@ -255,7 +256,7 @@ export default function LeaderboardClient() {
         const data = await searchLeaderboard(value.trim());
         setSearchResults(data.results || []);
       } catch {
-        createToast({ type: 'error', message: 'Search failed. Please try again.', position: 'top-center' });
+        toast.error('Search failed. Please try again.');
         setSearchResults([]);
       } finally {
         setSearchLoading(false);
@@ -269,11 +270,7 @@ export default function LeaderboardClient() {
       getCompanyLeaderboard()
         .then((data) => setCompanies(data))
         .catch(() => {
-          createToast({
-            type: 'error',
-            message: 'Could not load tech giants leaderboard.',
-            position: 'top-center',
-          });
+          toast.error('Could not load tech giants leaderboard.');
         })
         .finally(() => setCompaniesLoading(false));
     }

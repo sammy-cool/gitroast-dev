@@ -9,6 +9,7 @@ import {
     useCallback,
     useMemo,
 } from 'react'
+import { updateUserPreferences } from '@/services/roastService'
 
 const AuthContext = createContext(null)
 
@@ -89,17 +90,30 @@ export function AuthProvider({ children }) {
         window.location.href = `${API_BASE}/api/auth/github`
     }, [])
 
+    const updatePreferences = useCallback(async (newPreferences) => {
+        const token = getToken()
+        if (!token) return null
+        const data = await updateUserPreferences(newPreferences, token)
+        if (data?.user) {
+            setUser(data.user)
+        }
+        return data
+    }, [getToken])
+
     const value = useMemo(() => ({
         user,
         loading,
         isLoggedIn: !!user,
         isPro: user?.isPro || false,
+        proPlan: user?.proPlan || (user?.isPro ? 'roaster' : 'none'),
+        isHistorian: user?.proPlan === 'historian',
         loginWithGitHub,
         loginWithToken,
         getToken,
         logout,
         refreshUser,
-    }), [user, loading, loginWithGitHub, loginWithToken, getToken, logout, refreshUser]);
+        updatePreferences,
+    }), [user, loading, loginWithGitHub, loginWithToken, getToken, logout, refreshUser, updatePreferences]);
 
     return (
         <AuthContext.Provider value={value}>

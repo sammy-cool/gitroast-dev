@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { analyzeProfile, analyzeWrapped } = require("../services/githubService");
+const { analyzeProfile, analyzeWrapped, analyzeUniverse } = require("../services/githubService");
 const { analyzeRepository } = require("../services/repoRoastService");
 const { generateRoast } = require("../services/roastEngine");
 const {
@@ -51,7 +51,10 @@ router.get("/stats", async (req, res) => {
 
 router.get("/:username/wrapped", optionalAuth, verifyCaptcha, async (req, res) => {
   const { username } = req.params;
-  const year = parseInt(req.query.year, 10) || 2025;
+
+  const currentYear = new Date().getFullYear();
+  const rawYear = parseInt(req.query.year, 10);
+  const year = isNaN(rawYear) || rawYear < 2008 || rawYear > currentYear ? 2025 : rawYear;
 
   if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
     return res.status(400).json({
@@ -73,6 +76,12 @@ router.get("/:username/wrapped", optionalAuth, verifyCaptcha, async (req, res) =
     );
     return res.status(200).json({ success: true, wrapped });
   } catch (err) {
+    if (err.message === "ORGANIZATION_NOT_SUPPORTED") {
+      return res.status(400).json({
+        error: "ORGANIZATION_NOT_SUPPORTED",
+        message: "Organizations cannot be roasted. Enter a personal developer username.",
+      });
+    }
     if (err.message === "USER_NOT_FOUND") {
       return res.status(404).json({
         error: "USER_NOT_FOUND",
@@ -89,6 +98,81 @@ router.get("/:username/wrapped", optionalAuth, verifyCaptcha, async (req, res) =
     return res.status(500).json({
       error: "SERVER_ERROR",
       message: "Failed to generate Wrapped report.",
+    });
+  }
+});
+
+router.get("/:username/universe", optionalAuth, verifyCaptcha, async (req, res) => {
+  const { username } = req.params;
+  const isPro = req.user?.isPro || false;
+  const authUsername = req.user?.username || null;
+  const githubToken = req.user?.githubAccessToken || null;
+
+  if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
+    return res.status(400).json({
+      error: "INVALID_USERNAME",
+      message: "GitHub usernames can only contain letters, numbers, and hyphens.",
+    });
+  }
+
+  const isOwnProfileAndPro = Boolean(isPro && authUsername && username.toLowerCase() === authUsername.toLowerCase());
+  const cacheKey = isOwnProfileAndPro
+    ? `universe:${username.toLowerCase()}:private`
+    : `universe:${username.toLowerCase()}:public`;
+
+  if (redisService.isConfigured) {
+    const cached = await redisService.get(cacheKey).catch(() => null);
+    if (cached) {
+      if (isOwnProfileAndPro) {
+        res.setHeader("Cache-Control", "private, no-cache");
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+      }
+      return res.status(200).json({ success: true, universe: cached, cached: true });
+    }
+  }
+
+  try {
+    const universe = await analyzeUniverse(
+      username,
+      githubToken,
+      authUsername,
+      isPro,
+    );
+
+    if (redisService.isConfigured) {
+      redisService.set(cacheKey, universe, 600).catch(() => {});
+    }
+
+    if (isOwnProfileAndPro) {
+      res.setHeader("Cache-Control", "private, no-cache");
+    } else {
+      res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+    }
+    return res.status(200).json({ success: true, universe });
+  } catch (err) {
+    if (err.code === "ORGANIZATION_NOT_SUPPORTED") {
+      return res.status(400).json({
+        error: "ORGANIZATION_NOT_SUPPORTED",
+        message: `@${username} is an Organization. 3D Solar Systems are generated for individual developers!`,
+      });
+    }
+    if (err.message === "USER_NOT_FOUND") {
+      return res.status(404).json({
+        error: "USER_NOT_FOUND",
+        message: `GitHub user "@${username}" does not exist.`,
+      });
+    }
+    if (err.message === "RATE_LIMIT_EXCEEDED") {
+      return res.status(429).json({
+        error: "RATE_LIMIT_EXCEEDED",
+        message: "GitHub rate limit hit. Try again in 60 seconds or log in with GitHub.",
+      });
+    }
+    logger.error("Universe", `Error generating universe for ${username}`, { message: err.message });
+    return res.status(500).json({
+      error: "SERVER_ERROR",
+      message: "Failed to generate 3D Code Solar System.",
     });
   }
 });
@@ -117,16 +201,6 @@ router.get("/repo/:owner/:repo", optionalAuth, verifyCaptcha, async (req, res) =
     });
   }
 
-  if (req.user && !isPro) {
-    const canRoast = req.user.canRoastToday();
-    if (!canRoast) {
-      return res.status(429).json({
-        error: "DAILY_LIMIT_REACHED",
-        message: "Free users get 1 roast per day. Go Pro for unlimited! ⚡",
-      });
-    }
-  }
-
   const idempotencyKey = req.headers["x-idempotency-key"];
   if (idempotencyKey) {
     if (processedKeys.has(idempotencyKey)) {
@@ -140,16 +214,24 @@ router.get("/repo/:owner/:repo", optionalAuth, verifyCaptcha, async (req, res) =
     }
   }
 
+  if (req.user && !isPro) {
+    const canRoast = req.user.canRoastToday();
+    if (!canRoast) {
+      return res.status(429).json({
+        error: "DAILY_LIMIT_REACHED",
+        message: "Free users get 1 roast per day. Go Pro for unlimited! ⚡",
+      });
+    }
+  }
+
   try {
     const userToken = req.user?.githubAccessToken || null;
     const repoAnalysis = await analyzeRepository(owner, repo, userToken, isPro, intensity);
 
     if (req.user) {
-      req.user.roastCount += 1;
-      req.user.lastRoastDate = new Date();
       await User.findByIdAndUpdate(req.user._id, {
         $inc: { roastCount: 1, "stats.totalRoasts": 1 },
-        $set: { lastRoastDate: req.user.lastRoastDate },
+        $set: { lastRoastDate: new Date() },
       }).catch((e) =>
         logger.error("RepoRoast", "User atomic update failed", { message: e.message })
       );
@@ -196,8 +278,15 @@ router.get("/repo/:owner/:repo", optionalAuth, verifyCaptcha, async (req, res) =
 router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) => {
   const { username } = req.params;
   const isPro = req.user?.isPro || false;
-  const rawIntensity = req.query.intensity || "savage";
+  const rawIntensity = req.query.intensity || req.user?.customPreferences?.defaultIntensity || "savage";
   const intensity = ["mild", "savage", "nuclear"].includes(rawIntensity) ? rawIntensity : "savage";
+
+  const VALID_PERSONAS = new Set(["classic", "hinglish", "techbro", "ramsay", "shakespearean"]);
+  const rawPersona = (req.query.persona || "").toLowerCase().trim();
+  const userPersona = req.user?.customPreferences?.defaultPersona;
+  const persona = VALID_PERSONAS.has(rawPersona)
+    ? rawPersona
+    : (VALID_PERSONAS.has(userPersona) ? userPersona : "classic");
 
   if (intensity === "nuclear" && !isPro) {
     return res.status(403).json({
@@ -284,7 +373,7 @@ router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) =>
 
     if (isPro && process.env.GEMINI_API_KEY) {
       roastSource = "ai";
-      for await (const chunk of generateAIRoastStream(data, intensity)) {
+      for await (const chunk of generateAIRoastStream(data, intensity, persona)) {
         if (clientAborted || res.writableEnded || res.destroyed) break;
         fullRoast += chunk;
         res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
@@ -292,7 +381,7 @@ router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) =>
     }
 
     if (!fullRoast && !clientAborted && !res.writableEnded && !res.destroyed) {
-      fullRoast = generateRoast(data, intensity);
+      fullRoast = generateRoast(data, intensity, persona);
       roastSource = "rules";
       res.write(`event: chunk\ndata: ${JSON.stringify({ text: fullRoast })}\n\n`);
     }
@@ -311,6 +400,9 @@ router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) =>
       return;
     }
 
+    const isOwnProfile = Boolean(req.user && req.user.username.toLowerCase() === data.username.toLowerCase());
+    const isPrivate = isOwnProfile ? Boolean(req.user?.customPreferences?.hideFromLeaderboard) : false;
+
     const newRoast = await Roast.create({
       username: data.username,
       roastedBy: req.user?._id || null,
@@ -318,6 +410,8 @@ router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) =>
       grade: data.grade,
       roastText: fullRoast,
       intensity,
+      persona,
+      isPrivate,
       roastSource,
       avatarUrl: data.avatarUrl || `https://avatars.githubusercontent.com/${data.username}?s=120`,
       topLanguage: data._raw?.topLanguage || data.topLanguage || "",
@@ -340,11 +434,9 @@ router.get("/:username/stream", optionalAuth, verifyCaptcha, async (req, res) =>
     });
 
     if (req.user) {
-      req.user.roastCount += 1;
-      req.user.lastRoastDate = new Date();
       await User.findByIdAndUpdate(req.user._id, {
         $inc: { roastCount: 1, "stats.totalRoasts": 1 },
-        $set: { lastRoastDate: req.user.lastRoastDate },
+        $set: { lastRoastDate: new Date() },
       }).catch((e) =>
         logger.error("RoastStream", "User atomic update failed", { message: e.message }),
       );
@@ -396,13 +488,28 @@ router.get("/rate-limit-status", optionalAuth, async (req, res) => {
 
 router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
   const { username } = req.params;
+
+  if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
+    return res.status(400).json({
+      error: "INVALID_USERNAME",
+      message: "Invalid GitHub username format.",
+    });
+  }
+
   const isPro = req.user?.isPro || false;
   const idempotencyKey = req.headers["x-idempotency-key"];
 
-  const rawIntensity = req.query.intensity || "savage";
+  const rawIntensity = req.query.intensity || req.user?.customPreferences?.defaultIntensity || "savage";
   const intensity = ["mild", "savage", "nuclear"].includes(rawIntensity)
     ? rawIntensity
     : "savage";
+
+  const VALID_PERSONAS = new Set(["classic", "hinglish", "techbro", "ramsay", "shakespearean"]);
+  const rawPersona = (req.query.persona || "").toLowerCase().trim();
+  const userPersona = req.user?.customPreferences?.defaultPersona;
+  const persona = VALID_PERSONAS.has(rawPersona)
+    ? rawPersona
+    : (VALID_PERSONAS.has(userPersona) ? userPersona : "classic");
 
   if (intensity === "nuclear" && !isPro) {
     return res.status(403).json({
@@ -424,13 +531,6 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     }
   }
 
-  if (!username || username.length > 39 || !/^[a-zA-Z0-9-]+$/.test(username)) {
-    return res.status(400).json({
-      error: "INVALID_USERNAME",
-      message: "Invalid GitHub username format.",
-    });
-  }
-
   if (req.user && !isPro) {
     const canRoast = req.user.canRoastToday();
     if (!canRoast) {
@@ -450,14 +550,14 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     let roastSource = "rules";
 
     if (isPro) {
-      roast = await generateAIRoast(data, intensity);
+      roast = await generateAIRoast(data, intensity, persona);
       if (roast) {
         roastSource = "ai";
       } else {
-        roast = generateRoast(data, intensity);
+        roast = generateRoast(data, intensity, persona);
       }
     } else {
-      roast = generateRoast(data, intensity);
+      roast = generateRoast(data, intensity, persona);
     }
 
     if (!roast || roast.trim().length === 0) {
@@ -467,6 +567,7 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     data.roast = roast;
     data.roastSource = roastSource;
     data.intensity = intensity;
+    data.persona = persona;
 
     let redemptionPlan = [];
     if (isPro) {
@@ -479,6 +580,9 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     data.redemptionPlan = redemptionPlan;
 
     try {
+      const isOwnProfile = Boolean(req.user && req.user.username.toLowerCase() === username.toLowerCase());
+      const isPrivate = isOwnProfile ? Boolean(req.user?.customPreferences?.hideFromLeaderboard) : false;
+
       const savedRoast = await Roast.create({
         username,
         roastedBy: req.user?._id || null,
@@ -487,6 +591,8 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
         roastText: roast,
         roastSource,
         intensity,
+        persona,
+        isPrivate,
         avatarUrl: data.avatarUrl || `https://avatars.githubusercontent.com/${username}?s=120`,
         topLanguage: data._raw?.topLanguage || data.topLanguage || "",
         aiModel: roastSource === "ai" ? GEMINI_MODEL : "rules-engine",
@@ -518,16 +624,16 @@ router.get("/:username", optionalAuth, verifyCaptcha, async (req, res) => {
     }
 
     if (req.user) {
-      req.user.roastCount += 1;
-      req.user.lastRoastDate = new Date();
       await User.findByIdAndUpdate(req.user._id, {
         $inc: { roastCount: 1, "stats.totalRoasts": 1 },
-        $set: { lastRoastDate: req.user.lastRoastDate },
+        $set: { lastRoastDate: new Date() },
       }).catch((e) =>
         logger.error("Roast", "User atomic update failed", { message: e.message }),
       );
     }
 
+    data.isPro = isPro;
+    data.watermark = !isPro;
     const responseData = { success: true, data };
 
     if (idempotencyKey) {

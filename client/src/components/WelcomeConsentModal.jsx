@@ -1,0 +1,530 @@
+'use client'
+
+
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
+import Link from 'next/link'
+import { toast } from '@/utils/toast'
+import { WELCOME_CONSENT_KEY } from '@/utils/welcomeConstants'
+
+const subscribe = () => () => {}
+
+export { WELCOME_CONSENT_KEY }
+
+export default function WelcomeConsentModal({ isOpen, onClose }) {
+  const isClient = useSyncExternalStore(subscribe, () => true, () => false)
+  const [agreedSatire, setAgreedSatire] = useState(true)
+  const modalBoxRef = useRef(null)
+  const triggerElementRef = useRef(null)
+  const wasAlreadyConsentedRef = useRef(false)
+  const isSubmittingRef = useRef(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      isSubmittingRef.current = false
+      try {
+        wasAlreadyConsentedRef.current = !!localStorage.getItem(WELCOME_CONSENT_KEY)
+      } catch {
+        wasAlreadyConsentedRef.current = false
+      }
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handleStorage(e) {
+      if (e.key === WELCOME_CONSENT_KEY && e.newValue) {
+        onClose()
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [isOpen, onClose])
+
+  const handleAccept = useCallback(() => {
+    if (isSubmittingRef.current) return
+    if (!agreedSatire) {
+      toast.warning('Please acknowledge the satire disclaimer to enter the Roast Zone!')
+      return
+    }
+
+    isSubmittingRef.current = true
+    const isFirstTime = !wasAlreadyConsentedRef.current
+    try {
+      localStorage.setItem(WELCOME_CONSENT_KEY, new Date().toISOString())
+    } catch {
+    }
+
+    onClose()
+
+    if (isFirstTime) {
+      toast.fire('🔥 Welcome to GitRoast! Enter a GitHub username to begin.', {
+        duration: 4000,
+      })
+    }
+  }, [agreedSatire, onClose])
+
+  const handleDismiss = useCallback(() => {
+    try {
+      if (!localStorage.getItem(WELCOME_CONSENT_KEY)) {
+        localStorage.setItem(WELCOME_CONSENT_KEY, new Date().toISOString())
+      }
+    } catch {
+    }
+    onClose()
+  }, [onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    triggerElementRef.current = document.activeElement
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusTimer = requestAnimationFrame(() => {
+      if (modalBoxRef.current) {
+        const ctaBtn = modalBoxRef.current.querySelector('.welcome-cta')
+        if (ctaBtn) {
+          ctaBtn.focus()
+        } else {
+          modalBoxRef.current.focus()
+        }
+      }
+    })
+
+    return () => {
+      cancelAnimationFrame(focusTimer)
+      document.body.style.overflow = prevOverflow
+      if (
+        triggerElementRef.current &&
+        typeof triggerElementRef.current.focus === 'function' &&
+        typeof document !== 'undefined' &&
+        document.body.contains(triggerElementRef.current)
+      ) {
+        triggerElementRef.current.focus()
+      }
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleDismiss()
+        return
+      }
+
+      if (e.key === 'Tab' && modalBoxRef.current) {
+        const focusable = modalBoxRef.current.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+        if (focusable.length === 0) return
+
+        const firstElement = focusable[0]
+        const lastElement = focusable[focusable.length - 1]
+
+        if (e.shiftKey && document.activeElement === firstElement) {
+          lastElement.focus()
+          e.preventDefault()
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          firstElement.focus()
+          e.preventDefault()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, handleDismiss])
+
+  if (!isClient || !isOpen || typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      className="welcome-overlay"
+      onClick={handleDismiss}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="welcome-modal-title"
+      aria-describedby="welcome-modal-desc"
+    >
+      <div
+        ref={modalBoxRef}
+        className="welcome-box card"
+        onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
+      >
+        {}
+        <button
+          type="button"
+          className="welcome-close font-mono"
+          onClick={handleDismiss}
+          aria-label="Close welcome modal and enter GitRoast"
+        >
+          ✕
+        </button>
+
+        {}
+        <div className="welcome-header">
+          <div className="welcome-badge font-mono">
+            <span className="welcome-flame" aria-hidden="true">🔥</span>
+            <span>COMMUNITY CODE DISCLOSURE</span>
+          </div>
+          <h2 id="welcome-modal-title" className="welcome-title font-display">
+            ENTER THE ROAST ZONE
+          </h2>
+          <p id="welcome-modal-desc" className="welcome-subtitle">
+            Before your repositories get ruthlessly annihilated, here is the quick lowdown on how GitRoast works:
+          </p>
+        </div>
+
+        {}
+        <div className="welcome-grid">
+          <div className="welcome-item">
+            <div className="welcome-icon" aria-hidden="true">🤖</div>
+            <div className="welcome-item-content">
+              <h3 className="welcome-item-title font-mono">AI-Powered Satire</h3>
+              <p className="welcome-item-text">
+                Gemini 2.5 Flash & TypeSafe AI analyze public commits, messy PRs, and bio claims to generate savage humor. Built for laughs, not tears.
+              </p>
+            </div>
+          </div>
+
+          <div className="welcome-item">
+            <div className="welcome-icon" aria-hidden="true">🛡️</div>
+            <div className="welcome-item-content">
+              <h3 className="welcome-item-title font-mono">100% Public & Safe</h3>
+              <p className="welcome-item-text">
+                We only inspect public GitHub metadata via the official API. We never touch private repositories or request write permissions without explicit OAuth.
+              </p>
+            </div>
+          </div>
+
+          <div className="welcome-item">
+            <div className="welcome-icon" aria-hidden="true">⚡</div>
+            <div className="welcome-item-content">
+              <h3 className="welcome-item-title font-mono">Thick Skin Agreement</h3>
+              <p className="welcome-item-text">
+                By stepping into the arena, you agree to take the heat with good humor. Roast your own profile, pit rivals in 1v1 Battles, or inspect public repos.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {}
+        <label className={`welcome-checkbox-label ${!agreedSatire ? 'welcome-checkbox-label--warning' : ''}`}>
+          <input
+            type="checkbox"
+            className="welcome-checkbox"
+            checked={agreedSatire}
+            onChange={(e) => setAgreedSatire(e.target.checked)}
+          />
+          <span className="welcome-checkbox-text font-mono">
+            I understand that all roasts are AI-generated satire for entertainment.
+          </span>
+        </label>
+
+        {}
+        <div className="welcome-actions">
+          <button
+            type="button"
+            className={`welcome-cta btn-fire font-display ${!agreedSatire ? 'welcome-cta--disabled' : ''}`}
+            onClick={handleAccept}
+            aria-disabled={!agreedSatire}
+          >
+            I CAN TAKE IT — LET&apos;S ROAST 🔥
+          </button>
+          <div className="welcome-links font-mono">
+            <Link
+              href="/about"
+              className="welcome-learn-link"
+              onClick={handleDismiss}
+            >
+              How It Works & Terms ↗
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        .welcome-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.82);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 1rem;
+          animation: welcomeFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .welcome-box {
+          position: relative;
+          width: 100%;
+          max-width: 540px;
+          background: #121212;
+          border: 1px solid rgba(255, 69, 0, 0.35);
+          box-shadow:
+            0 20px 50px rgba(0, 0, 0, 0.8),
+            0 0 40px rgba(255, 69, 0, 0.15);
+          border-radius: var(--radius-lg, 16px);
+          padding: 2rem 1.75rem 1.75rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+          max-height: 90vh;
+          max-height: calc(100dvh - 2rem);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          outline: none;
+          animation: welcomeScaleUp 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .welcome-close {
+          position: absolute;
+          top: 1rem;
+          right: 1rem;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.18s ease;
+        }
+        .welcome-close:hover {
+          background: rgba(255, 69, 0, 0.15);
+          color: var(--fire);
+          border-color: var(--fire);
+        }
+        .welcome-close:focus-visible {
+          outline: 2px solid var(--fire);
+          outline-offset: 2px;
+        }
+
+        .welcome-header {
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .welcome-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 10px;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: var(--fire);
+          background: rgba(255, 69, 0, 0.1);
+          border: 1px solid rgba(255, 69, 0, 0.25);
+          padding: 4px 10px;
+          border-radius: 100px;
+        }
+
+        .welcome-flame {
+          font-size: 12px;
+        }
+
+        .welcome-title {
+          font-size: 32px;
+          letter-spacing: 1.5px;
+          line-height: 1;
+          margin: 4px 0 0;
+          background: linear-gradient(135deg, #FFFFFF 20%, #FF6B00 70%, #FF4500 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-subtitle {
+          font-size: 13px;
+          line-height: 1.5;
+          color: var(--text-secondary);
+          margin: 0;
+          max-width: 440px;
+        }
+
+        .welcome-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .welcome-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          background: rgba(255, 255, 255, 0.025);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: var(--radius-md, 12px);
+          padding: 10px 14px;
+          transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .welcome-item:hover {
+          border-color: rgba(255, 107, 0, 0.3);
+          background: rgba(255, 69, 0, 0.03);
+        }
+
+        .welcome-icon {
+          font-size: 20px;
+          line-height: 1;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .welcome-item-content {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .welcome-item-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-primary);
+          letter-spacing: 0.5px;
+          margin: 0;
+        }
+
+        .welcome-item-text {
+          font-size: 11.5px;
+          line-height: 1.45;
+          color: var(--text-muted);
+          margin: 0;
+        }
+
+        .welcome-checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          padding: 6px 8px;
+          border-radius: var(--radius-sm, 6px);
+          user-select: none;
+          transition: background 0.18s ease, border-color 0.18s ease;
+          border: 1px solid transparent;
+        }
+        .welcome-checkbox-label--warning {
+          border-color: rgba(255, 183, 0, 0.35);
+          background: rgba(255, 183, 0, 0.06);
+        }
+
+        .welcome-checkbox {
+          width: 16px;
+          height: 16px;
+          accent-color: var(--fire);
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        .welcome-checkbox-text {
+          font-size: 11px;
+          color: var(--text-secondary);
+          line-height: 1.4;
+        }
+
+        .welcome-actions {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+        }
+
+        .welcome-cta {
+          width: 100%;
+          padding: 13px 20px;
+          font-size: 18px;
+          letter-spacing: 1.5px;
+          border-radius: var(--radius-md, 12px);
+          border: none;
+          cursor: pointer;
+          box-shadow: 0 4px 20px rgba(255, 69, 0, 0.35);
+          transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.18s ease, filter 0.18s ease;
+        }
+        .welcome-cta:hover:not(.welcome-cta--disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 25px rgba(255, 69, 0, 0.45);
+        }
+        .welcome-cta:active:not(.welcome-cta--disabled) {
+          transform: translateY(0);
+        }
+        .welcome-cta--disabled {
+          opacity: 0.45;
+          filter: grayscale(0.6);
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .welcome-cta:focus-visible {
+          outline: 2px solid var(--fire);
+          outline-offset: 2px;
+        }
+
+        .welcome-links {
+          font-size: 11.5px;
+        }
+
+        .welcome-learn-link {
+          color: var(--text-muted);
+          text-decoration: none;
+          transition: color 0.18s ease;
+        }
+        .welcome-learn-link:hover {
+          color: var(--fire);
+          text-decoration: underline;
+        }
+        .welcome-learn-link:focus-visible {
+          outline: 2px solid var(--fire);
+          outline-offset: 2px;
+        }
+
+        @keyframes welcomeFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes welcomeScaleUp {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        @media (max-width: 520px) {
+          .welcome-box {
+            padding: 1.5rem 1.25rem 1.25rem;
+            max-height: calc(100dvh - 1.5rem);
+          }
+          .welcome-title {
+            font-size: 26px;
+          }
+          .welcome-subtitle {
+            font-size: 12px;
+          }
+          .welcome-cta {
+            font-size: 16px;
+            padding: 12px 16px;
+          }
+        }
+      `}</style>
+    </div>,
+    document.body
+  )
+}

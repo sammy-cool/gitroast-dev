@@ -3,19 +3,31 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createToast } from "customizable-toast-notification";
 import UsernameInput from "@/components/UsernameInput";
+import { toast } from "@/utils/toast";
 import dynamic from 'next/dynamic';
 const ProModal = dynamic(() => import('@/components/ProModal'), { ssr: false });
+const WelcomeConsentModal = dynamic(() => import('@/components/WelcomeConsentModal'), { ssr: false });
+import { WELCOME_CONSENT_KEY } from "@/utils/welcomeConstants";
 import GitHubLoginBtn from "@/components/GitHubLoginBtn";
 import RateLimitBanner from "@/components/RateLimitBanner";
 import LiveRoastFeed from "@/components/LiveRoastFeed";
+import SoundToggle from "@/components/SoundToggle";
+import { playClick, playFireSizzle } from "@/utils/soundFX";
 import { useAuth } from "@/context/AuthContext";
 import {
   getRoastStats,
   checkHealth,
   getRoastOfTheDay,
 } from "@/services/roastService";
+
+const PERSONAS = [
+  { key: "classic", label: "Classic", emoji: "💀", desc: "Sharp, cynical code review" },
+  { key: "hinglish", label: "Hinglish", emoji: "🇮🇳", desc: "Desi Tech Lead office comedy" },
+  { key: "techbro", label: "Tech Bro", emoji: "👔", desc: "Silicon Valley Web3/AI lingo" },
+  { key: "ramsay", label: "Chef Ramsay", emoji: "👨‍🍳", desc: "IT'S RAW! Pure kitchen fury" },
+  { key: "shakespearean", label: "Shakespeare", emoji: "🎭", desc: "Elizabethan tragic verse" },
+];
 
 const INTENSITIES = [
   {
@@ -47,38 +59,75 @@ const INTENSITIES = [
 export default function LandingPageClient() {
   const { user, loginWithGitHub, loading: authLoading } = useAuth();
   const [showProModal, setShowProModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [totalRoasts, setTotalRoasts] = useState(null);
   const [dailyRoast, setDailyRoast] = useState(null);
   const [broadcastDismissed, setBroadcastDismissed] = useState(false);
   const [serverStatus, setServerStatus] = useState("checking");
   const [intensity, setIntensity] = useState(() => {
     if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("gitroast_intensity");
-      if (saved && INTENSITIES.find((i) => i.key === saved)) {
-        return saved;
+      try {
+        const saved = sessionStorage.getItem("gitroast_intensity");
+        if (saved && INTENSITIES.find((i) => i.key === saved)) {
+          return saved;
+        }
+      } catch {
       }
     }
     return "savage";
   });
 
+  const [selectedPersona, setSelectedPersona] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("gitroast_persona");
+        if (saved && PERSONAS.find((p) => p.key === saved)) {
+          return saved;
+        }
+      } catch {
+      }
+    }
+    return null;
+  });
+
+  const persona = selectedPersona || user?.customPreferences?.defaultPersona || "classic";
+
   const [rateLimitSecs, setRateLimitSecs] = useState(() => {
     if (typeof window !== "undefined") {
-      const rl = sessionStorage.getItem("gitroast_rate_limit");
-      if (rl) {
-        try {
-          const { retryAfter, setAt } = JSON.parse(rl);
-          const elapsed = Math.floor((Date.now() - setAt) / 1000);
-          const remaining = retryAfter - elapsed;
-          if (remaining > 0) return remaining;
-          sessionStorage.removeItem("gitroast_rate_limit");
-        } catch {
-          sessionStorage.removeItem("gitroast_rate_limit");
+      try {
+        const rl = sessionStorage.getItem("gitroast_rate_limit");
+        if (rl) {
+          try {
+            const { retryAfter, setAt } = JSON.parse(rl);
+            const elapsed = Math.floor((Date.now() - setAt) / 1000);
+            const remaining = retryAfter - elapsed;
+            if (remaining > 0) return remaining;
+            sessionStorage.removeItem("gitroast_rate_limit");
+          } catch {
+            sessionStorage.removeItem("gitroast_rate_limit");
+          }
         }
+      } catch {
       }
     }
     return null;
   });
   const router = useRouter();
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const consented = localStorage.getItem(WELCOME_CONSENT_KEY);
+        if (!consented) {
+          const timer = setTimeout(() => {
+            setShowWelcomeModal(true);
+          }, 350);
+          return () => clearTimeout(timer);
+        }
+      }
+    } catch {
+    }
+  }, []);
 
   useEffect(() => {
     async function initHealth() {
@@ -94,24 +143,28 @@ export default function LandingPageClient() {
     if (authLoading) return;
     if (
       !user &&
+      !showWelcomeModal &&
       typeof window !== "undefined" &&
-      !sessionStorage.getItem("gitroast_login_broadcast")
+      !sessionStorage.getItem("gitroast_login_broadcast") &&
+      localStorage.getItem(WELCOME_CONSENT_KEY)
     ) {
-      createToast({
-        type: "info",
-        message: "⚡ Please log in with GitHub to avoid public API rate limit throttling!",
-        position: "top-center",
-        duration: 8000,
-        showCloseButton: true,
-        cta: {
-          label: "Login ↗",
-          onClick: loginWithGitHub,
-          autoClose: true,
-        },
-      });
-      sessionStorage.setItem("gitroast_login_broadcast", "1");
+      const timer = setTimeout(() => {
+        if (!sessionStorage.getItem("gitroast_login_broadcast")) {
+          toast.info("⚡ Please log in with GitHub to avoid public API rate limit throttling!", {
+            duration: 8000,
+            cta: {
+              label: "Login ↗",
+              onClick: loginWithGitHub,
+              autoClose: true,
+            },
+          });
+          sessionStorage.setItem("gitroast_login_broadcast", "1");
+        }
+      }, 5000);
+
+      return () => clearTimeout(timer);
     }
-  }, [authLoading, user, loginWithGitHub]);
+  }, [authLoading, user, loginWithGitHub, showWelcomeModal]);
 
   useEffect(() => {
     getRoastStats().then((total) => {
@@ -123,53 +176,41 @@ export default function LandingPageClient() {
   }, []);
 
   function handleIntensitySelect(key) {
+    playClick();
     const selected = INTENSITIES.find((i) => i.key === key);
     if (selected.isPro && !user?.isPro) {
-      createToast({
-        type: "info",
-        message: "☢️ Nuclear mode is a Pro feature.",
-        position: "top-center",
-        duration: 5000,
-        showCloseButton: true,
-        showProgressBar: true,
-        cta: {
-          label: "See Plans ⚡",
-          onClick: () => setShowProModal(true),
-          autoClose: true,
-        },
-      });
+      toast.proNudge("☢️ Nuclear mode is a Pro feature.", () => setShowProModal(true), "See Plans ⚡");
       return;
     }
     setIntensity(key);
     sessionStorage.setItem("gitroast_intensity", key);
   }
 
+  function handlePersonaSelect(key) {
+    playClick();
+    setSelectedPersona(key);
+    sessionStorage.setItem("gitroast_persona", key);
+  }
+
   function handleRoast(target) {
     if (rateLimitSecs && rateLimitSecs > 0) {
-      createToast({
-        type: "warning",
-        message: `⏱ Rate limited. Wait ${rateLimitSecs} more seconds.`,
-        position: "top-center",
-      });
+      toast.rateLimit(rateLimitSecs, loginWithGitHub);
       return;
     }
 
     const cleanTarget = (target || "").trim().toLowerCase();
     if (!cleanTarget) {
-      createToast({
-        type: "warning",
-        message: "Enter a GitHub username or repo first!",
-        position: "top-center",
-        showProgressBar: true,
-      });
+      toast.warning("Enter a GitHub username or repo first!");
       return;
     }
 
+    playFireSizzle();
     sessionStorage.setItem("gitroast_intensity", intensity);
+    sessionStorage.setItem("gitroast_persona", persona);
     if (cleanTarget.includes("/")) {
       router.push(`/repo/${cleanTarget}`);
     } else {
-      router.push(`/roast/${cleanTarget}`);
+      router.push(`/roast/${cleanTarget}?intensity=${intensity}&persona=${persona}`);
     }
   }
 
@@ -193,8 +234,30 @@ export default function LandingPageClient() {
                 ? "Connecting…"
                 : "Checking…"}
           </span>
+          <button
+            type="button"
+            className="nav-guide-btn font-mono"
+            onClick={() => setShowWelcomeModal(true)}
+            title="How GitRoast works & Satire Rules"
+            aria-label="How GitRoast works & Satire Rules"
+          >
+            <span className="nav-guide-label">Rules</span>
+            <span className="nav-guide-icon" aria-hidden="true">ℹ️</span>
+          </button>
         </div>
-        <GitHubLoginBtn variant="compact" />
+        <div className="landing-nav-right">
+          <SoundToggle />
+          {user && (
+            <Link
+              href="/dashboard"
+              className="nav-dashboard-link font-mono"
+              title="User Dashboard & Settings"
+            >
+              ⚡ Dashboard
+            </Link>
+          )}
+          <GitHubLoginBtn variant="compact" />
+        </div>
       </nav>
 
       {}
@@ -242,6 +305,7 @@ export default function LandingPageClient() {
         <div className="intensity-options">
           {INTENSITIES.map((opt) => (
             <button
+              type="button"
               key={opt.key}
               className={`intensity-btn font-mono ${intensity === opt.key ? "intensity-btn--active" : ""} ${opt.isPro ? "intensity-btn--pro" : ""}`}
               style={{
@@ -263,6 +327,28 @@ export default function LandingPageClient() {
         </div>
         <p className="intensity-desc font-mono">
           {selectedIntensity.emoji} {selectedIntensity.description}
+        </p>
+      </div>
+
+      {}
+      <div className="persona-wrap">
+        <p className="persona-label font-mono">🎭 Roast Persona:</p>
+        <div className="persona-options">
+          {PERSONAS.map((p) => (
+            <button
+              type="button"
+              key={p.key}
+              className={`persona-btn font-mono ${persona === p.key ? "persona-btn--active" : ""}`}
+              onClick={() => handlePersonaSelect(p.key)}
+              title={p.desc}
+            >
+              <span className="persona-emoji">{p.emoji}</span>
+              <span className="persona-name">{p.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="persona-desc font-mono">
+          {PERSONAS.find((p) => p.key === persona)?.desc}
         </p>
       </div>
 
@@ -294,27 +380,35 @@ export default function LandingPageClient() {
 
       {}
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
-        <button
-          className="btn btn-outline"
-          onClick={() => router.push("/pricing")}
-        >
+        <Link href="/pricing" className="btn btn-outline">
           ⚡ Pricing
-        </button>
-        <button className="btn btn-ghost" onClick={() => setShowProModal(true)}>
+        </Link>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => setShowProModal(true)}
+        >
           What&apos;s in Pro?
         </button>
       </div>
 
-      <button
-        className="btn btn-ghost"
-        onClick={() => router.push("/leaderboard")}
-      >
-        🏆 Wall of Shame
-      </button>
-
-      <button className="btn btn-ghost" onClick={() => router.push("/battle")}>
-        ⚔️ Roast Battle
-      </button>
+      {}
+      {}
+      {}
+      {}
+      {}
+      {}
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
+        <Link href="/leaderboard" className="btn btn-ghost">
+          🏆 Wall of Shame
+        </Link>
+        <Link href="/battle" className="btn btn-ghost">
+          ⚔️ Roast Battle
+        </Link>
+        <Link href="/universe" className="btn btn-ghost" style={{ color: "#00E5FF", borderColor: "rgba(0, 229, 255, 0.3)" }}>
+          🌌 3D Universe
+        </Link>
+      </div>
 
       {}
       <div className="sample-roast card">
@@ -335,7 +429,7 @@ export default function LandingPageClient() {
               className="daily-avatar"
               width={36}
               height={36}
-              loading="lazy"
+              loading="eager"
               crossOrigin="anonymous"
             />
             <div className="daily-author-info">
@@ -358,6 +452,13 @@ export default function LandingPageClient() {
       </div>
 
       {showProModal && <ProModal onClose={() => setShowProModal(false)} />}
+
+      {showWelcomeModal && (
+        <WelcomeConsentModal
+          isOpen={showWelcomeModal}
+          onClose={() => setShowWelcomeModal(false)}
+        />
+      )}
 
       <style jsx>{`
         .landing-page {
@@ -386,6 +487,48 @@ export default function LandingPageClient() {
           display: flex;
           align-items: center;
           gap: 8px;
+        }
+        .nav-guide-btn {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 10px;
+          letter-spacing: 0.5px;
+          padding: 2px 8px;
+          border-radius: 6px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          transition: all 0.18s ease;
+        }
+        .nav-guide-btn:hover {
+          color: var(--fire);
+          border-color: rgba(255, 69, 0, 0.4);
+          background: rgba(255, 69, 0, 0.08);
+        }
+        .landing-nav-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          overflow: hidden;
+        }
+        .nav-dashboard-link {
+          font-size: 11px;
+          color: var(--fire);
+          text-decoration: none;
+          padding: 4px 8px;
+          background: rgba(255, 69, 0, 0.08);
+          border: 1px solid rgba(255, 69, 0, 0.3);
+          border-radius: var(--radius-sm);
+          transition: all 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+        }
+        .nav-dashboard-link:hover {
+          background: rgba(255, 69, 0, 0.16);
+          border-color: var(--fire);
         }
 
         /* ── Health Status Indicator ── */
@@ -623,6 +766,67 @@ export default function LandingPageClient() {
           color: var(--text-secondary);
           height: 18px;
         }
+        /* ── Roast Persona Selector ── */
+        .persona-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          max-width: 480px;
+        }
+        .persona-label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          color: var(--text-muted);
+        }
+        .persona-options {
+          display: flex;
+          gap: 6px;
+          width: 100%;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+        .persona-btn {
+          flex: 1;
+          min-width: 80px;
+          max-width: 92px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          padding: 8px 4px;
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all 0.18s ease;
+        }
+        .persona-btn:hover {
+          border-color: var(--fire);
+          background: var(--bg-elevated);
+        }
+        .persona-btn--active {
+          border-color: var(--fire);
+          background: rgba(255, 69, 0, 0.1);
+          box-shadow: 0 0 10px rgba(255, 69, 0, 0.2);
+        }
+        .persona-emoji {
+          font-size: 18px;
+          line-height: 1;
+        }
+        .persona-name {
+          font-size: 10px;
+          color: var(--text-primary);
+          white-space: nowrap;
+        }
+        .persona-desc {
+          font-size: 11px;
+          color: var(--text-muted);
+          height: 16px;
+          text-align: center;
+        }
         .landing-social-proof {
           color: var(--text-secondary);
           font-size: 13px;
@@ -725,6 +929,31 @@ export default function LandingPageClient() {
           .intensity-desc {
             font-size: 11px;
             margin-top: -2px;
+          }
+          .persona-wrap {
+            gap: 5px;
+          }
+          .persona-options {
+            gap: 4px;
+          }
+          .persona-btn {
+            min-width: 62px;
+            padding: 6px 2px;
+          }
+          .persona-emoji {
+            font-size: 15px;
+          }
+          .persona-name {
+            font-size: 9.5px;
+          }
+          .nav-guide-btn {
+            font-size: 9.5px;
+            padding: 2px 6px;
+          }
+        }
+        @media (max-width: 380px) {
+          .nav-guide-btn .nav-guide-label {
+            display: none;
           }
         }
       `}</style>

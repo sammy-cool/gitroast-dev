@@ -2,8 +2,9 @@
 
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import { createToast } from 'customizable-toast-notification'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { toast } from '@/utils/toast'
+import { playFireSizzle } from '@/utils/soundFX'
 import AnalyzingScreen from '@/components/AnalyzingScreen'
 import dynamic from 'next/dynamic';
 const RoastCard = dynamic(() => import('@/components/RoastCard'));
@@ -20,7 +21,8 @@ export default function RoastPageClient({ username }) {
   const [roastData, setRoastData] = useState(null)
   const [showProModal, setShowProModal] = useState(false)
   const router = useRouter()
-  const { getToken, isPro } = useAuth()
+  const searchParams = useSearchParams()
+  const { getToken, isPro, user } = useAuth()
 
   const idempotencyKey = useRef('')
 
@@ -33,7 +35,7 @@ export default function RoastPageClient({ username }) {
       username.length > 39 ||
       !/^[a-zA-Z0-9-]+$/.test(username)
     ) {
-      createToast({ type: 'error', message: 'Invalid GitHub username.', position: 'top-center' })
+      toast.error('Invalid GitHub username.')
       router.push('/')
       return
     }
@@ -52,6 +54,7 @@ export default function RoastPageClient({ username }) {
             if (cancelled) return
             setRoastData(parsed.data)
             setView('result')
+            playFireSizzle()
             return
           } else {
             sessionStorage.removeItem(cacheKey)
@@ -63,10 +66,13 @@ export default function RoastPageClient({ username }) {
 
       try {
         const token = getToken()
-        const intensity = sessionStorage.getItem('gitroast_intensity') || 'savage'
+        const queryIntensity = searchParams.get('intensity')
+        const queryPersona = searchParams.get('persona')
+        const intensity = queryIntensity || sessionStorage.getItem('gitroast_intensity') || 'savage'
+        const persona = queryPersona || sessionStorage.getItem('gitroast_persona') || 'classic'
 
         const [data] = await Promise.all([
-          getRoast(username, idempotencyKey.current, token, intensity),
+          getRoast(username, idempotencyKey.current, token, intensity, persona),
           new Promise(resolve => setTimeout(resolve, MIN_ANALYSIS_TIME)),
         ])
 
@@ -76,37 +82,26 @@ export default function RoastPageClient({ username }) {
         }
         setRoastData(data)
         setView('result')
+        playFireSizzle()
 
-        createToast({
-          type: 'success',
-          message: `🔥 @${username}'s roast is ready!`,
-          position: 'top-center',
-          showProgressBar: true,
-          duration: 3500,
-        })
+        toast.fire(`🔥 @${username}'s roast is ready!`)
 
       } catch (err) {
         if (cancelled) return
 
         if (err.code === 'ORGANIZATION_NOT_SUPPORTED') {
-          createToast({
-            type: 'error',
-            message: err.message || `@${username} is an Organization. GitRoast roasts individual developers!`,
-            position: 'top-center',
-            duration: 5000,
-            showCloseButton: true,
-          })
+          toast.error(err.message || `@${username} is an Organization. GitRoast roasts individual developers!`)
           router.push('/')
           return
         }
 
         if (err.code === 'USER_NOT_FOUND') {
-          createToast({
-            type: 'error',
-            message: `GitHub user "@${username}" not found.`,
-            position: 'top-center',
-            duration: 5000,
-            showCloseButton: true,
+          toast.error(`GitHub user "@${username}" not found.`, {
+            cta: {
+              label: 'Search Wall 🔍',
+              onClick: () => router.push('/leaderboard'),
+              autoClose: true,
+            },
           })
           router.push('/')
           return
@@ -125,76 +120,55 @@ export default function RoastPageClient({ username }) {
           }
 
           const isLoggedIn = !!getToken();
-          createToast({
-            type: 'warning',
-            message: isOurLimit
-              ? `⏱ Too many requests. Try again in ${seconds}.`
-              : isLoggedIn
-              ? `⚡ GitHub rate limit reached. Please wait a moment before roasting again.`
-              : `GitHub public limit hit! Log in via GitHub to unlock your dedicated quota.`,
-            position: 'top-center',
-            duration: Math.min(retryAfter * 1000, 8000),
-            showCloseButton: true,
-            ...(!isLoggedIn && {
-              cta: {
-                label: 'Login via GitHub ↗',
-                onClick: () => {
+          toast.rateLimit(
+            retryAfter,
+            !isLoggedIn
+              ? () => {
                   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
                   window.location.href = `${apiBase}/api/auth/github`
-                },
-                autoClose: true,
-              },
-            }),
-          })
+                }
+              : null
+          )
           router.push('/')
           return
         }
 
         if (err.code === 'CAPTCHA_REQUIRED' || err.code === 'CAPTCHA_FAILED') {
           const isLoggedIn = !!getToken();
-          createToast({
-            type: 'warning',
-            message: err.message || (isLoggedIn ? 'Bot verification check could not be completed. Please try again.' : 'Bot verification blocked by browser shield. Please log in with GitHub to roast!'),
-            position: 'top-center',
-            duration: 8000,
-            showCloseButton: true,
-            ...(!isLoggedIn && {
-              cta: {
-                label: 'Login via GitHub ↗',
-                onClick: () => {
-                  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-                  window.location.href = `${apiBase}/api/auth/github`
+          toast.warning(
+            err.message || (isLoggedIn ? 'Bot verification check could not be completed. Please try again.' : 'Bot verification blocked by browser shield. Please log in with GitHub to roast!'),
+            {
+              duration: 8000,
+              ...(!isLoggedIn && {
+                cta: {
+                  label: 'Login via GitHub ↗',
+                  onClick: () => {
+                    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                    window.location.href = `${apiBase}/api/auth/github`
+                  },
+                  autoClose: true,
                 },
-                autoClose: true,
-              },
-            }),
-          })
+              }),
+            }
+          )
           router.push('/')
           return
         }
 
         if (err.name === 'TimeoutError') {
-          createToast({
-            type: 'error',
-            message: 'Request timed out. Try again.',
-            position: 'top-center',
-          })
+          toast.error('Request timed out. Try again.')
           router.push('/')
           return
         }
 
-        createToast({
-          type: 'error',
-          message: 'Something broke. Not your fault... probably.',
-          position: 'top-center',
-        })
+        toast.error('Something broke. Not your fault... probably.')
         router.push('/')
       }
     }
 
     fetchRoast()
     return () => { cancelled = true }
-  }, [username, router, getToken])
+  }, [username, router, getToken, searchParams])
 
   function handleRoastAnother() {
     sessionStorage.removeItem(`gitroast_roast_${username}`)
@@ -213,12 +187,13 @@ export default function RoastPageClient({ username }) {
             <div className="font-display nav-logo text-fire">GITROAST 🔥</div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
+                type="button"
                 className="btn btn-ghost"
                 onClick={() => router.push(`/history/${roastData.username}`)}
               >
                 📈 History
               </button>
-              <button className="btn btn-ghost" onClick={handleRoastAnother}>
+              <button type="button" className="btn btn-ghost" onClick={handleRoastAnother}>
                 ← Roast Another
               </button>
             </div>
@@ -240,23 +215,25 @@ export default function RoastPageClient({ username }) {
           />
 
           {}
-          <Link href="/pricing" className="upsell-link">
-            <div className="upsell-card card">
-              <div>
-                <p className="upsell-title">📈 Historian Plan</p>
-                <p className="upsell-sub font-mono">
-                  Monthly report · Score trends · Roast streak tracking.
-                </p>
-              </div>
-              <div className="upsell-price">
-                <div className="upsell-amount-row">
-                  <span className="font-display upsell-symbol">₹</span>
-                  <span className="font-display upsell-number">199</span>
+          {user?.proPlan !== 'historian' && (
+            <Link href="/pricing" className="upsell-link">
+              <div className="upsell-card card">
+                <div>
+                  <p className="upsell-title">📈 Historian Plan</p>
+                  <p className="upsell-sub font-mono">
+                    Monthly report · Score trends · Roast streak tracking.
+                  </p>
                 </div>
-                <span className="font-mono upsell-period">/month</span>
+                <div className="upsell-price">
+                  <div className="upsell-amount-row">
+                    <span className="font-display upsell-symbol">₹</span>
+                    <span className="font-display upsell-number">199</span>
+                  </div>
+                  <span className="font-mono upsell-period">/month</span>
+                </div>
               </div>
-            </div>
-          </Link>
+            </Link>
+          )}
         </main>
 
         {showProModal && <ProModal onClose={() => setShowProModal(false)} />}

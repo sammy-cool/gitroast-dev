@@ -39,6 +39,7 @@ export async function getRoast(
   idempotencyKey = null,
   token = null,
   intensity = "savage",
+  persona = "classic",
 ) {
   const headers = { "Content-Type": "application/json" };
 
@@ -51,7 +52,7 @@ export async function getRoast(
 
   if (idempotencyKey) headers["X-Idempotency-Key"] = idempotencyKey;
 
-  const url = `${API_BASE}/api/roast/${encodeURIComponent(username)}?intensity=${encodeURIComponent(intensity)}`;
+  const url = `${API_BASE}/api/roast/${encodeURIComponent(username)}?intensity=${encodeURIComponent(intensity)}&persona=${encodeURIComponent(persona)}`;
 
   const res = await fetch(url, {
     method: "GET",
@@ -143,7 +144,7 @@ export function wakeUpServer() {
   fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60000) }).catch(() => {});
 }
 
-export async function getBattleRoast(user1, user2, token = null) {
+export async function getBattleRoast(user1, user2, token = null, rematch = false) {
   const headers = { "Content-Type": "application/json" };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -152,8 +153,9 @@ export async function getBattleRoast(user1, user2, token = null) {
     if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
   }
 
+  const queryParams = rematch ? "?rematch=true" : "";
   const res = await fetch(
-    `${API_BASE}/api/battle/${encodeURIComponent(user1)}/vs/${encodeURIComponent(user2)}`,
+    `${API_BASE}/api/battle/${encodeURIComponent(user1)}/vs/${encodeURIComponent(user2)}${queryParams}`,
     { method: "GET", headers, signal: AbortSignal.timeout(60000) },
   );
 
@@ -348,6 +350,7 @@ export async function getRepoRoast(
     const err = new Error(json.message || "Failed to fetch repository roast");
     err.code = json.error;
     err.status = res.status;
+    err.retryAfter = json.retryAfter || null;
     throw err;
   }
   return json.data;
@@ -386,6 +389,7 @@ export async function streamRoast(
   intensity = "savage",
   token = null,
   callbacks = {},
+  persona = "classic",
 ) {
   const { onMetadata, onChunk, onDone, onError } = callbacks;
   const headers = { Accept: "text/event-stream" };
@@ -397,7 +401,7 @@ export async function streamRoast(
     if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
   }
 
-  const url = `${API_BASE}/api/roast/${encodeURIComponent(username)}/stream?intensity=${encodeURIComponent(intensity)}`;
+  const url = `${API_BASE}/api/roast/${encodeURIComponent(username)}/stream?intensity=${encodeURIComponent(intensity)}&persona=${encodeURIComponent(persona)}`;
 
   try {
     const res = await fetch(url, {
@@ -491,6 +495,59 @@ export async function getRateLimitStatus(token = null) {
   const json = await safeParseJson(res);
   if (!res.ok) {
     const err = new Error(json.message || "Failed to fetch rate limit status");
+    err.code = json.error;
+    err.status = res.status;
+    throw err;
+  }
+
+  return json;
+}
+
+export async function updateUserPreferences(preferences, token) {
+  if (!token) throw new Error("Authentication required to update preferences.");
+
+  const res = await fetch(`${API_BASE}/api/auth/preferences`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(preferences),
+    signal: AbortSignal.timeout(10000),
+  });
+
+  const json = await safeParseJson(res);
+  if (!res.ok) {
+    const err = new Error(json.message || "Failed to update preferences");
+    err.code = json.error;
+    err.status = res.status;
+    throw err;
+  }
+
+  return json;
+}
+
+export async function getUniverse(username, token = null) {
+  const cleanUsername = (username || "").trim().toLowerCase();
+  if (!cleanUsername) throw new Error("Username is required.");
+
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    const captchaToken = await getCaptchaToken("universe").catch(() => null);
+    if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
+  }
+
+  const res = await fetch(`${API_BASE}/api/roast/${encodeURIComponent(cleanUsername)}/universe`, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(60000),
+  });
+
+  const json = await safeParseJson(res);
+  if (!res.ok) {
+    const err = new Error(json.message || "Failed to generate 3D Code Solar System.");
     err.code = json.error;
     err.status = res.status;
     throw err;

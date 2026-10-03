@@ -7,6 +7,10 @@ export default function Footer() {
   const year = new Date().getFullYear()
   const pathname = usePathname() || ''
 
+  if (pathname.startsWith('/universe/') && pathname !== '/universe') {
+    return null
+  }
+
   function isActive(href) {
     if (href === '/') return pathname === '/'
     return pathname === href || pathname.startsWith(`${href}/`)
@@ -40,10 +44,22 @@ export default function Footer() {
             Battle
           </Link>
           <Link
+            href="/universe"
+            className={`footer-link ${isActive('/universe') ? 'footer-link--active' : ''}`}
+          >
+            3D Universe
+          </Link>
+          <Link
             href="/pricing"
             className={`footer-link ${isActive('/pricing') ? 'footer-link--active' : ''}`}
           >
             Pricing
+          </Link>
+          <Link
+            href="/dashboard"
+            className={`footer-link ${isActive('/dashboard') ? 'footer-link--active' : ''}`}
+          >
+            Dashboard
           </Link>
           <Link
             href="/about"

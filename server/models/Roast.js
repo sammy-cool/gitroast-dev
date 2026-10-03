@@ -45,6 +45,19 @@ const roastSchema = new mongoose.Schema(
       default: "savage",
     },
 
+    persona: {
+      type: String,
+      enum: ["classic", "hinglish", "techbro", "ramsay", "shakespearean"],
+      default: "classic",
+      index: true,
+    },
+
+    isPrivate: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
     avatarUrl: {
       type: String,
       default: null,
@@ -174,6 +187,7 @@ roastSchema.statics.getLeaderboard = async function (options = {}) {
   const skip = (page - 1) * limit;
 
   const result = await this.aggregate([
+    { $match: { isPrivate: { $ne: true } } },
     { $project: { username: { $toLower: "$username" }, score: 1 } },
     {
       $group: {
@@ -216,6 +230,7 @@ roastSchema.statics.getLeaderboard = async function (options = {}) {
 };
 
 roastSchema.statics.incrementShare = function (id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
   return this.findByIdAndUpdate(id, { $inc: { shareCount: 1 } });
 };
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { createToast } from "customizable-toast-notification";
 import { useState } from "react";
+import Link from "next/link";
+import { toast, toastPromise } from "@/utils/toast";
 import { trackShare } from "@/services/roastService";
 import dynamic from 'next/dynamic';
 const RoastCertificate = dynamic(() => import('./RoastCertificate'), { ssr: false });
@@ -30,23 +31,11 @@ export default function ShareButtons({
             .then(() => {
                 setCopied(true);
                 trackShare(roastId);
-                createToast({
-                    type: "success",
-                    message: "🔥 Roast link copied! Go share your shame.",
-                    position: "top-center",
-                    showProgressBar: true,
-                    duration: 3000,
-                });
+                toast.copy("🔥 Roast link copied! Go share your shame.");
                 setTimeout(() => setCopied(false), 2500);
             })
             .catch(() => {
-                createToast({
-                    type: "error",
-                    message: "Could not copy link. Try manually.",
-                    position: "top-center",
-                    duration: 5000,
-                    showCloseButton: true,
-                });
+                toast.error("Could not copy link. Try manually.");
             });
     }
 
@@ -57,23 +46,11 @@ export default function ShareButtons({
             .writeText(textToCopy)
             .then(() => {
                 setCopiedText(true);
-                createToast({
-                    type: "success",
-                    message: "📋 Roast text copied! Paste it anywhere.",
-                    position: "top-center",
-                    showProgressBar: true,
-                    duration: 3000,
-                });
+                toast.copy("📋 Roast text copied! Paste it anywhere.");
                 setTimeout(() => setCopiedText(false), 2500);
             })
             .catch(() => {
-                createToast({
-                    type: "error",
-                    message: "Could not copy text. Try manually.",
-                    position: "top-center",
-                    duration: 5000,
-                    showCloseButton: true,
-                });
+                toast.error("Could not copy text. Try manually.");
             });
     }
 
@@ -89,12 +66,7 @@ export default function ShareButtons({
             "noopener,noreferrer",
         );
         trackShare(roastId);
-        createToast({
-            type: "success",
-            message: "🐦 Twitter opened! Share your shame.",
-            position: "top-center",
-            duration: 3000,
-        });
+        toast.success("🐦 Twitter opened! Share your shame.");
     }
 
     function handleCopyBadge(styleToCopy = badgeStyle) {
@@ -106,110 +78,86 @@ export default function ShareButtons({
             .then(() => {
                 setCopiedBadge(true);
                 trackShare(roastId);
-                createToast({
-                    type: "success",
-                    message: "🛡️ Badge Markdown copied! Paste in your GitHub profile README.md.",
-                    position: "top-center",
-                    showProgressBar: true,
-                    duration: 4000,
-                });
+                toast.copy("🛡️ Badge Markdown copied! Paste into your GitHub profile README.md.");
                 setTimeout(() => setCopiedBadge(false), 2500);
             })
             .catch(() => {
-                createToast({
-                    type: "error",
-                    message: "Could not copy badge code. Try manually.",
-                    position: "top-center",
-                    duration: 4000,
-                });
+                toast.error("Could not copy badge code. Try manually.");
             });
     }
 
     async function handleDownload() {
+        if (downloading) return;
         setDownloading(true);
         try {
-            const html2canvas = (await import("html2canvas")).default;
-            const element = document.getElementById("roast-card-capture");
-            if (!element) throw new Error("Card element not found");
+            await toastPromise(
+                (async () => {
+                    const html2canvas = (await import("html2canvas")).default;
+                    const element = document.getElementById("roast-card-capture");
+                    if (!element) throw new Error("Card element not found");
 
-            const scale = isPro ? 2 : 1;
-            const canvas = await html2canvas(element, {
-                scale,
-                useCORS: true,
-                backgroundColor: "#0F0F0F",
-                logging: false,
-                windowWidth: element.scrollWidth,
-                windowHeight: element.scrollHeight,
-            });
+                    const scale = isPro ? 2 : 1;
+                    const canvas = await html2canvas(element, {
+                        scale,
+                        useCORS: true,
+                        backgroundColor: "#0F0F0F",
+                        logging: false,
+                        windowWidth: element.scrollWidth,
+                        windowHeight: element.scrollHeight,
+                    });
 
-            if (!isPro) {
-                const ctx = canvas.getContext("2d");
-                ctx.save();
-                ctx.globalAlpha = 0.18;
-                ctx.fillStyle = "#FF6B00";
-                ctx.font = 'bold 38px "Courier New", monospace';
-                ctx.textAlign = "center";
-                const angle = -Math.PI / 6;
-                const stepX = 260;
-                const stepY = 180;
-                const text = "ROASTED BY GITROAST";
-                for (let y = -100; y < canvas.height + 100; y += stepY) {
-                    for (let x = -100; x < canvas.width + 100; x += stepX) {
+                    if (!isPro) {
+                        const ctx = canvas.getContext("2d");
                         ctx.save();
-                        ctx.translate(x, y);
-                        ctx.rotate(angle);
-                        ctx.fillText(text, 0, 0);
+                        ctx.globalAlpha = 0.18;
+                        ctx.fillStyle = "#FF6B00";
+                        ctx.font = 'bold 38px "Courier New", monospace';
+                        ctx.textAlign = "center";
+                        const angle = -Math.PI / 6;
+                        const stepX = 260;
+                        const stepY = 180;
+                        const text = "ROASTED BY GITROAST";
+                        for (let y = -100; y < canvas.height + 100; y += stepY) {
+                            for (let x = -100; x < canvas.width + 100; x += stepX) {
+                                ctx.save();
+                                ctx.translate(x, y);
+                                ctx.rotate(angle);
+                                ctx.fillText(text, 0, 0);
+                                ctx.restore();
+                            }
+                        }
                         ctx.restore();
                     }
+
+                    const link = document.createElement("a");
+                    link.download = `gitroast-${username}.png`;
+                    link.href = canvas.toDataURL("image/png", 1.0);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                })(),
+                {
+                    loading: "🎨 Rendering roast card...",
+                    success: isPro
+                        ? "⚡ HD roast card downloaded! No watermark, full quality."
+                        : "🔥 Card downloaded! Go Pro to remove the watermark.",
+                    error: "Download failed. Please try again.",
                 }
-                ctx.restore();
-            }
-
-            const link = document.createElement("a");
-            link.download = `gitroast-${username}.png`;
-            link.href = canvas.toDataURL("image/png", 1.0);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            createToast({
-                type: "success",
-                message: isPro
-                    ? "⚡ HD roast card downloaded! No watermark, full quality."
-                    : "🔥 Card downloaded! Go Pro to remove the watermark.",
-                position: "top-center",
-                showProgressBar: true,
-                duration: 4000,
-            });
+            );
             trackShare(roastId);
         } catch (err) {
             console.error("[Download] Failed:", err);
-            createToast({
-                type: "error",
-                message: "Download failed. Try again.",
-                position: "top-center",
-                duration: 4000,
-                showCloseButton: true,
-            });
         } finally {
             setDownloading(false);
         }
     }
 
     function handlePro() {
-        createToast({
-            type: "info",
-            message: "⚡ Unlock AI roasts, private repos + HD watermark-free card.",
-            position: "top-center",
-            duration: 6000,
-            showCloseButton: true,
-            showProgressBar: true,
-            cta: {
-                label: "See Plans ⚡",
-                onClick: onProClick,
-                autoClose: true,
-            },
-        });
+        toast.proNudge(
+            "⚡ Unlock AI roasts, private repos + HD watermark-free card.",
+            onProClick,
+            "See Plans ⚡"
+        );
     }
 
     return (
@@ -280,6 +228,20 @@ export default function ShareButtons({
             </div>
 
             {}
+            {}
+            {}
+            {}
+            {}
+            {}
+            <Link href={`/universe/${username}`} className="universe-link-wrapper">
+                <div className="btn-universe font-mono">
+                    <span className="universe-star-icon" aria-hidden="true">✦</span>
+                    <span className="universe-text">Launch 3D Code Solar System</span>
+                    <span className="universe-pill">3D WEBGL</span>
+                </div>
+            </Link>
+
+            {}
             <div className="badge-row">
                 <button
                     type="button"
@@ -341,13 +303,14 @@ export default function ShareButtons({
             {}
             <div className="tertiary-buttons">
                 <button
+                    type="button"
                     className="btn btn-ghost copy-text-btn"
                     onClick={handleCopyText}
                 >
                     {copiedText ? "✓ Copied!" : "📋 Copy Roast Text"}
                 </button>
                 {!isPro && (
-                    <button className="btn btn-outline pro-btn" onClick={handlePro}>
+                    <button type="button" className="btn btn-outline pro-btn" onClick={handlePro}>
                         ⚡ Go Pro — ₹99
                     </button>
                 )}
@@ -580,6 +543,52 @@ export default function ShareButtons({
         .extras-row {
           display: flex;
           gap: 8px;
+        }
+
+        :global(.universe-link-wrapper) {
+          text-decoration: none;
+          display: block;
+          width: 100%;
+        }
+        .btn-universe {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 12px 16px;
+          background: linear-gradient(135deg, rgba(0, 229, 255, 0.1) 0%, rgba(124, 77, 255, 0.1) 100%);
+          border: 1px solid rgba(0, 229, 255, 0.35);
+          border-radius: var(--radius-md);
+          color: #00E5FF;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 16px rgba(0, 229, 255, 0.08);
+        }
+        .btn-universe:hover {
+          background: linear-gradient(135deg, rgba(0, 229, 255, 0.2) 0%, rgba(124, 77, 255, 0.2) 100%);
+          border-color: #00E5FF;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 22px rgba(0, 229, 255, 0.25);
+          color: #FFFFFF;
+        }
+        .universe-star-icon {
+          color: #00E5FF;
+          animation: pulseUniverse 1.8s infinite ease-in-out;
+        }
+        @keyframes pulseUniverse {
+          0%, 100% { opacity: 0.6; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.3); text-shadow: 0 0 8px #00E5FF; }
+        }
+        .universe-pill {
+          font-size: 9px;
+          letter-spacing: 1px;
+          background: rgba(0, 229, 255, 0.2);
+          border: 1px solid rgba(0, 229, 255, 0.3);
+          color: #00E5FF;
+          padding: 2px 6px;
+          border-radius: 4px;
         }
         @media (max-width: 480px) {
           .badge-row {

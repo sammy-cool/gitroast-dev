@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createToast } from 'customizable-toast-notification'
+import Link from 'next/link'
+import { toast } from '@/utils/toast'
 import { useRoastHistory } from '@/hooks/useRoastHistory'
 import HistoryCard from '@/components/HistoryCard'
 import ScoreChart from '@/components/ScoreChart'
@@ -19,14 +20,11 @@ export default function HistoryPageClient({ username }) {
 
     useEffect(() => {
         if (error) {
-            createToast({
-                type: 'error',
-                message: error || 'Failed to load roast history',
-                position: 'top-center',
-                duration: 5000,
+            toast.error(error || 'Failed to load roast history', {
                 cta: {
-                    label: 'Retry',
+                    label: 'Retry 🔄',
                     onClick: refetch,
+                    autoClose: true,
                 },
             })
         }
@@ -39,7 +37,7 @@ export default function HistoryPageClient({ username }) {
                 {}
                 <div className="history-nav">
                     <div className="font-display nav-logo text-fire">GITROAST 🔥</div>
-                    <button className="btn btn-ghost" onClick={() => router.push('/')}>
+                    <button type="button" className="btn btn-ghost" onClick={() => router.push('/')}>
                         ← Home
                     </button>
                 </div>
@@ -219,10 +217,10 @@ export default function HistoryPageClient({ username }) {
                     ❌ {error}
                 </p>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="btn btn-primary" onClick={refetch}>
+                    <button type="button" className="btn btn-primary" onClick={refetch}>
                         Try Again
                     </button>
-                    <button className="btn btn-ghost" onClick={() => router.push('/')}>
+                    <button type="button" className="btn btn-ghost" onClick={() => router.push('/')}>
                         ← Home
                     </button>
                 </div>
@@ -246,9 +244,9 @@ export default function HistoryPageClient({ username }) {
             {}
             <div className="history-nav">
                 <div className="font-display nav-logo text-fire">GITROAST 🔥</div>
-                <button className="btn btn-ghost" onClick={() => router.push('/')}>
+                <Link href="/" className="btn btn-ghost">
                     ← Home
-                </button>
+                </Link>
             </div>
 
             <div className="breadcrumb-wrap">
@@ -291,6 +289,7 @@ export default function HistoryPageClient({ username }) {
                     </div>
                 </div>
                 <button
+                    type="button"
                     className="btn btn-primary roast-again-btn"
                     onClick={() => router.push(`/roast/${username}`)}
                 >
@@ -305,6 +304,7 @@ export default function HistoryPageClient({ username }) {
                         @{username} hasn&apos;t been roasted yet.
                     </p>
                     <button
+                        type="button"
                         className="btn btn-primary"
                         onClick={() => router.push(`/roast/${username}`)}
                     >

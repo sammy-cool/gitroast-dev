@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createToast } from 'customizable-toast-notification'
+import Link from 'next/link'
+import { toast } from '@/utils/toast'
 import PaymentModal from '@/components/PaymentModal'
 import PricingCard from '@/components/PricingCard'
 import GitHubLoginBtn from '@/components/GitHubLoginBtn'
@@ -141,12 +142,8 @@ export default function PricingPageClient() {
             return
         }
         if (!user) {
-            createToast({
-                type: 'info',
-                message: '🔐 Connect GitHub first to unlock Pro.',
-                position: 'top-center',
-                duration: 5000,
-                showCloseButton: true,
+            toast.info('🔐 Connect GitHub first to unlock Pro.', {
+                duration: 6000,
                 cta: {
                     label: 'Connect GitHub →',
                     onClick: () => loginWithGitHub(),
@@ -156,13 +153,17 @@ export default function PricingPageClient() {
             return
         }
         if (isPro) {
-            createToast({
-                type: 'success',
-                message: '⚡ You already have Pro! Enjoy the nuclear roasts.',
-                position: 'top-center',
-                duration: 4000,
-            })
-            return
+            const userPlan = user?.proPlan || 'roaster';
+            if (userPlan === 'roaster' && planId === 'historian') {
+                setSelectedPlan(planId);
+                return;
+            }
+            toast.info(
+                userPlan === 'historian'
+                    ? '⚡ You are already on the Historian plan with maximum access!'
+                    : '⚡ You are already subscribed to this plan.'
+            );
+            return;
         }
         setSelectedPlan(planId)
     }
@@ -181,12 +182,7 @@ export default function PricingPageClient() {
         }).catch(() => {
         })
 
-        createToast({
-            type: 'success',
-            message: "⚔️ You're on the list! We'll notify you when Squad launches.",
-            position: 'top-center',
-            duration: 5000,
-        })
+        toast.success("⚔️ You're on the list! We'll notify you when Squad launches.")
     }
 
     return (
@@ -196,9 +192,9 @@ export default function PricingPageClient() {
 
             {}
             <nav className="pricing-nav">
-                <button className="btn btn-ghost" onClick={() => router.push('/')}>
+                <Link href="/" className="btn btn-ghost">
                     ← Home
-                </button>
+                </Link>
                 <GitHubLoginBtn variant="compact" />
             </nav>
 
@@ -259,7 +255,7 @@ export default function PricingPageClient() {
                             onKeyDown={e => e.key === 'Enter' && handleWaitlist(e)}
                             className="waitlist-input font-mono"
                         />
-                        <button className="btn btn-primary waitlist-btn" onClick={handleWaitlist}>
+                        <button type="button" className="btn btn-primary waitlist-btn" onClick={handleWaitlist}>
                             Notify Me ⚔️
                         </button>
                     </div>

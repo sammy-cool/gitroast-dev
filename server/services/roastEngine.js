@@ -456,9 +456,16 @@ let loadedRuleCount = 0;
 try {
   const externalRules = require("../data/roastRules.json");
   if (externalRules?.rules && Array.isArray(externalRules.rules)) {
+    const VALID_INTENSITIES = new Set(["mild", "savage", "nuclear"]);
+    const VALID_TIERS = new Set(["catastrophic", "rough", "mediocre", "decent", "respectable"]);
+    const VALID_CATEGORIES = new Set(["opener", "abandonment", "commit", "language", "closer"]);
+
     for (const rule of externalRules.rules) {
       const { category, intensity, tier, language, text } = rule;
       if (!text) continue;
+      if (!VALID_CATEGORIES.has(category)) continue;
+      if (intensity && !VALID_INTENSITIES.has(intensity)) continue;
+      if (tier && !VALID_TIERS.has(tier)) continue;
 
       if (category === "opener" && OPENER_BANK[intensity]?.[tier]) {
         if (!OPENER_BANK[intensity][tier].includes(text)) {
@@ -494,12 +501,69 @@ try {
 } catch {
 }
 
-function generateRoast(data, intensity = "savage") {
+const PERSONA_FALLBACK_WRAPPERS = {
+  hinglish: {
+    prefixes: [
+      "Arre bhai,",
+      "Dekh bhai,",
+      "Senior engineer hone ke naate sach bol raha hu bhai,",
+      "Aisa code dekh ke HR bhi resign kar de bhai —",
+    ],
+    suffixes: [
+      "Batao zara, is code ke bharose onsite jaane ka sapna dekh rahe the bhai?",
+      "Friday ko bina test ke push karke so gaye the na? Production fat gaya bhai!",
+      "Har mahine salary credit hoti hai bas, commits me zero effort hai bhai.",
+    ],
+  },
+  techbro: {
+    prefixes: [
+      "Honestly bro, looking at this cap table of repos,",
+      "Not gonna lie king, zero conviction detected here —",
+      "We ran your GitHub through our YC pitch screener and",
+    ],
+    suffixes: [
+      "Negative alpha. Pivot to autonomous agent swarms or touch grass, king.",
+      "This is pure Web2 CRUD velocity in a Web3 era. Zero moat.",
+      "Your burn rate of abandoned repos is catastrophic, fam. Skill issue.",
+    ],
+  },
+  ramsay: {
+    prefixes: [
+      "LOOK AT THIS GITHUB! ABSOLUTE DISASTER!",
+      "WAKE UP! What in the name of software engineering is this?!",
+      "I'VE SEEN BETTER CODE WRITTEN BY A DONKEY IN A MICHELIN KITCHEN!",
+    ],
+    suffixes: [
+      "IT'S RAW! SHUT IT DOWN! UNBELIEVABLE EMBARRASSMENT!",
+      "You're an idiot sandwich with syntax errors on both sides!",
+      "Dreadful. Absolutely dreadful. You should apologize to the compiler!",
+    ],
+  },
+  shakespearean: {
+    prefixes: [
+      "Alas, poor developer! Look upon thy works and weep,",
+      "Hark! What catastrophic tragedy doth unfold upon this commit log?",
+      "O sorrowful mortal, by what dark witchcraft were thy loops begotten?",
+    ],
+    suffixes: [
+      "Thy logic hath neither grace nor salvation; a plague on both thy branches!",
+      "Thus dies all hope in syntax, buried beneath a thousand unhandled rejections.",
+      "Farewell, sweet prince of bugs; may angels sing thee to thy fatal merge conflict.",
+    ],
+  },
+};
+
+function generateRoast(data, intensity = "savage", persona = "classic") {
   const { score, _raw, repoAnalysis, commitAnalysis } = data;
 
   if (repoAnalysis?.totalOwn === 0) {
     const bank = GHOST_BANK[intensity] || GHOST_BANK.savage;
-    return pick(bank);
+    const ghostRoast = pick(bank);
+    const wrapper = PERSONA_FALLBACK_WRAPPERS[persona];
+    if (wrapper) {
+      return `${pick(wrapper.prefixes)} ${ghostRoast} ${pick(wrapper.suffixes)}`;
+    }
+    return ghostRoast;
   }
 
   const opener = buildOpener(score, intensity);
@@ -518,7 +582,16 @@ function generateRoast(data, intensity = "savage") {
     closer,
   ].filter(Boolean);
 
-  return selected.join(" ");
+  let rawRoast = selected.join(" ");
+
+  const wrapper = PERSONA_FALLBACK_WRAPPERS[persona];
+  if (wrapper) {
+    const prefix = pick(wrapper.prefixes);
+    const suffix = pick(wrapper.suffixes);
+    return `${prefix} ${rawRoast} ${suffix}`;
+  }
+
+  return rawRoast;
 }
 
 module.exports = {

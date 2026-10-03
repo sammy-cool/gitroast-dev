@@ -31,12 +31,14 @@ export default function GlobalError({ error, reset }) {
         <div className="err-actions">
           {}
           <button
+            type="button"
             className="btn btn-primary err-btn"
             onClick={() => reset()}
           >
             Try Again
           </button>
           <button
+            type="button"
             className="btn btn-ghost err-btn-ghost"
             onClick={() => window.location.href = '/'}
           >
@@ -53,7 +55,7 @@ export default function GlobalError({ error, reset }) {
           flex-direction:  column;
           align-items:     center;
           justify-content: center;
-          padding:         2rem 1rem;
+          padding:         2rem 1rem 6.5rem;
           gap:             1.5rem;
           position:        relative;
           overflow:        hidden;

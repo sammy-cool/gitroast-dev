@@ -75,6 +75,11 @@ const userSchema = new mongoose.Schema(
                 enum: ['mild', 'savage', 'nuclear'],
                 default: 'savage',
             },
+            defaultPersona: {
+                type: String,
+                enum: ['classic', 'hinglish', 'techbro', 'ramsay', 'shakespearean'],
+                default: 'classic',
+            },
             cardTheme: {
                 type: String,
                 default: 'fire',
@@ -104,10 +109,10 @@ userSchema.methods.canRoastToday = function () {
 
     if (!this.lastRoastDate) return true
 
-    const today = new Date()
-    const lastRoast = new Date(this.lastRoastDate)
+    const todayUtc = new Date().toISOString().slice(0, 10)
+    const lastRoastUtc = new Date(this.lastRoastDate).toISOString().slice(0, 10)
 
-    return today.toDateString() !== lastRoast.toDateString()
+    return todayUtc !== lastRoastUtc
 }
 
 userSchema.methods.toSafeObject = function () {
@@ -118,13 +123,14 @@ userSchema.methods.toSafeObject = function () {
         email: this.email,
         avatarUrl: this.avatarUrl,
         isPro: this.isPro,
-        proPlan: this.proPlan || (this.isPro ? 'roaster' : 'none'),
+        proPlan: this.isPro && (!this.proPlan || this.proPlan === 'none') ? 'roaster' : (this.proPlan || 'none'),
         proSince: this.proSince,
         badges: this.badges || [],
-        customPreferences: this.customPreferences || {
-            defaultIntensity: 'savage',
-            cardTheme: 'fire',
-            hideFromLeaderboard: false,
+        customPreferences: {
+            defaultIntensity: this.customPreferences?.defaultIntensity || 'savage',
+            defaultPersona: this.customPreferences?.defaultPersona || 'classic',
+            cardTheme: this.customPreferences?.cardTheme || 'fire',
+            hideFromLeaderboard: Boolean(this.customPreferences?.hideFromLeaderboard),
         },
         stats: {
             totalRoasts: this.stats?.totalRoasts || this.roastCount || 0,

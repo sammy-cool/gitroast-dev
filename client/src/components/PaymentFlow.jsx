@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { createToast } from 'customizable-toast-notification'
+import { toast } from '@/utils/toast'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 const RAZORPAY_KEY = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
@@ -46,13 +46,7 @@ export default function PaymentFlow({ planId, onClose }) {
         script.onerror = () => {
             setStatus('error')
             setErrorMsg('Razorpay failed to load. Check your connection.')
-            createToast({
-                type: 'error',
-                message: 'Payment SDK failed to load. Try refreshing.',
-                position: 'top-center',
-                duration: 5000,
-                showCloseButton: true,
-            })
+            toast.error('Payment SDK failed to load. Try refreshing.')
         }
         document.body.appendChild(script)
     }, [])
@@ -96,11 +90,7 @@ export default function PaymentFlow({ planId, onClose }) {
 
                 modal: {
                     ondismiss: function () {
-                        createToast({
-                            type: 'warning',
-                            message: 'Payment cancelled. No charge was made.',
-                            position: 'top-center',
-                        })
+                        toast.warning('Payment cancelled. No charge was made.')
                         setStatus('ready')
                     },
                     confirm_close: false,
@@ -111,13 +101,7 @@ export default function PaymentFlow({ planId, onClose }) {
             const rzp = new window.Razorpay(options)
 
             rzp.on('payment.failed', function (response) {
-                createToast({
-                    type: 'error',
-                    message: `Payment failed: ${response.error.description}`,
-                    position: 'top-center',
-                    duration: 6000,
-                    showCloseButton: true,
-                })
+                toast.paymentError(`Payment failed: ${response.error.description}`)
                 setStatus('ready')
             })
 
@@ -127,13 +111,7 @@ export default function PaymentFlow({ planId, onClose }) {
         } catch (err) {
             setStatus('error')
             setErrorMsg(err.message || 'Could not create payment session.')
-            createToast({
-                type: 'error',
-                message: err.message || 'Payment setup failed. Try again.',
-                position: 'top-center',
-                duration: 5000,
-                showCloseButton: true,
-            })
+            toast.paymentError(err.message || 'Payment setup failed. Try again.')
         }
     }
 
@@ -162,12 +140,9 @@ export default function PaymentFlow({ planId, onClose }) {
 
             setStatus('done')
 
-            createToast({
-                type: 'success',
+            toast.paymentSuccess({
                 message: '⚡ You are now Pro! AI roasts + Nuclear unlocked.',
                 position: 'top-center',
-                showProgressBar: true,
-                duration: 5000,
             })
 
             closeTimerRef.current = setTimeout(() => {
@@ -177,13 +152,10 @@ export default function PaymentFlow({ planId, onClose }) {
         } catch (err) {
             setStatus('error')
             setErrorMsg(err.message || 'Payment verification failed.')
-            createToast({
-                type: 'error',
-                message: err.message || 'Verification failed. Contact support with your payment ID.',
-                position: 'top-center',
-                duration: 8000,
-                showCloseButton: true,
-            })
+            toast.paymentError(
+                err.message || 'Verification failed. Contact support with your payment ID.',
+                { position: 'top-center' }
+            )
         }
     }
 

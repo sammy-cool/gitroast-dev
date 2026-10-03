@@ -1395,3 +1395,491 @@ describe("Feature #15 — Repository Deep Roast Parameter Validation Order", () 
         assert.equal(responseData.error, "INVALID_REPO");
     });
 });
+
+describe("Feature #16 — Profile Fail-Fast Validation & Battle Rematch Invariants", () => {
+    const roastRoute = require("../routes/roast");
+    const battleRoute = require("../routes/battle");
+    const redisService = require("../services/redisService");
+
+    it("should fail-fast with 400 INVALID_USERNAME on malformed username before idempotency", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = {
+            params: { username: "invalid$$user" },
+            query: { intensity: "nuclear" },
+            user: null,
+            headers: { "x-idempotency-key": "test-key" },
+        };
+        const res = {
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const usernameLayer = roastRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/:username" && layer.route.methods.get,
+        );
+        assert.ok(usernameLayer, "/:username route must exist");
+        const handler = usernameLayer.route.stack[usernameLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 400);
+        assert.equal(responseData.error, "INVALID_USERNAME");
+    });
+
+    it("should bypass Redis battle cache when req.query.rematch is 'true'", async () => {
+        const originalIsConfigured = redisService.isConfigured;
+        const originalGet = redisService.get;
+        let redisGetCalled = false;
+
+        try {
+            redisService.isConfigured = true;
+            redisService.get = async () => {
+                redisGetCalled = true;
+                return { success: true, cached: true };
+            };
+
+            const req = {
+                params: { user1: "invalid1$$$", user2: "invalid2$$$" },
+                query: { rematch: "true" },
+                headers: {},
+            };
+            const res = {
+                status: () => res,
+                json: () => res,
+            };
+
+            const battleLayer = battleRoute.stack.find(
+                (layer) => layer.route && layer.route.path === "/:user1/vs/:user2" && layer.route.methods.get,
+            );
+            const handler = battleLayer.route.stack[battleLayer.route.stack.length - 1].handle;
+            await handler(req, res);
+
+            assert.equal(redisGetCalled, false, "Redis battle cache must not be queried when rematch=true");
+        } finally {
+            redisService.isConfigured = originalIsConfigured;
+            redisService.get = originalGet;
+        }
+    });
+
+    it("should safely accept slug format in POST /:id/view without error", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = {
+            params: { id: "dev1-vs-dev2" },
+        };
+        const res = {
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const viewLayer = battleRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/:id/view" && layer.route.methods.post,
+        );
+        assert.ok(viewLayer, "/:id/view route must exist");
+        const handler = viewLayer.route.stack[viewLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 200);
+        assert.equal(responseData.success, true);
+    });
+});
+
+describe("Feature #17 — Repo Idempotency Precedence, Wrapped Year Clamping & CastError Guards", () => {
+    const roastRoute = require("../routes/roast");
+    const Roast = require("../models/Roast");
+    const redisService = require("../services/redisService");
+
+    it("should return cached response for repo roast when idempotency key is matched even if user daily quota is reached", async () => {
+        const originalIsConfigured = redisService.isConfigured;
+        const originalGet = redisService.get;
+
+        try {
+            redisService.isConfigured = true;
+            redisService.get = async (key) => {
+                if (key === "idemp:cached-repo-key") {
+                    return { success: true, data: { cached: true, repo: "test/repo" } };
+                }
+                return null;
+            };
+
+            let statusCode = 0;
+            let responseData = null;
+            const req = {
+                params: { owner: "valid-owner", repo: "valid-repo" },
+                query: {},
+                headers: { "x-idempotency-key": "cached-repo-key" },
+                user: {
+                    isPro: false,
+                    canRoastToday: () => false,
+                },
+            };
+            const res = {
+                status: (code) => {
+                    statusCode = code;
+                    return res;
+                },
+                json: (data) => {
+                    responseData = data;
+                    return res;
+                },
+            };
+
+            const repoLayer = roastRoute.stack.find(
+                (layer) => layer.route && layer.route.path === "/repo/:owner/:repo" && layer.route.methods.get,
+            );
+            assert.ok(repoLayer, "/repo/:owner/:repo route must exist");
+            const handler = repoLayer.route.stack[repoLayer.route.stack.length - 1].handle;
+            await handler(req, res);
+
+            assert.equal(statusCode, 200, "Should return 200 from cache instead of 429 DAILY_LIMIT_REACHED");
+            assert.equal(responseData.success, true);
+            assert.equal(responseData.data.cached, true);
+        } finally {
+            redisService.isConfigured = originalIsConfigured;
+            redisService.get = originalGet;
+        }
+    });
+
+    it("should safely return null in Roast.incrementShare when given an invalid ObjectId", async () => {
+        const result = await Roast.incrementShare("invalid-not-an-objectid");
+        assert.equal(result, null, "Roast.incrementShare must return null without throwing CastError on invalid ID");
+    });
+});
+
+describe("Feature #18 — Multi-Tier User Personas & Historian Plan Invariants", () => {
+    const paymentRoute = require("../routes/payment");
+    const User = require("../models/User");
+
+    it("should return public plans including roaster and historian with correct pricing", () => {
+        let responseData = null;
+        const res = {
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+        const plansLayer = paymentRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/plans" && layer.route.methods.get,
+        );
+        assert.ok(plansLayer, "/plans route must exist");
+        const handler = plansLayer.route.stack[plansLayer.route.stack.length - 1].handle;
+        handler({}, res);
+
+        assert.equal(responseData.success, true);
+        const roaster = responseData.plans.find((p) => p.id === "roaster");
+        const historian = responseData.plans.find((p) => p.id === "historian");
+        assert.ok(roaster, "Roaster plan must be present");
+        assert.ok(historian, "Historian plan must be present");
+        assert.equal(roaster.amount, 9900);
+        assert.equal(historian.amount, 19900);
+    });
+
+    it("should safely reject unknown plan IDs with 400 INVALID_PLAN on create-order", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = {
+            body: { planId: "fake_nonexistent_plan" },
+            user: { _id: "64b000000000000000000001" },
+        };
+        const res = {
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const createOrderLayer = paymentRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/create-order" && layer.route.methods.post,
+        );
+        assert.ok(createOrderLayer, "/create-order route must exist");
+        const handler = createOrderLayer.route.stack[createOrderLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 400);
+        assert.equal(responseData.error, "INVALID_PLAN");
+    });
+
+    it("should preserve user proPlan across free, roaster, and historian tiers in toSafeObject", () => {
+        const guestUser = new User({ username: "free_dev", isPro: false, proPlan: "none" });
+        const roasterUser = new User({ username: "roaster_dev", isPro: true, proPlan: "roaster" });
+        const legacyProUser = new User({ username: "legacy_dev", isPro: true, proPlan: "none" });
+        const historianUser = new User({ username: "historian_dev", isPro: true, proPlan: "historian" });
+
+        assert.equal(guestUser.toSafeObject().proPlan, "none");
+        assert.equal(roasterUser.toSafeObject().proPlan, "roaster");
+        assert.equal(legacyProUser.toSafeObject().proPlan, "roaster", "Legacy Pro defaults to roaster");
+        assert.equal(historianUser.toSafeObject().proPlan, "historian");
+    });
+});
+
+describe("Feature #19 — Roast Personas, User Preferences & Ghost Mode Invariants", () => {
+    const { PERSONA_CONFIG } = require("../services/aiService");
+    const { generateRoast } = require("../services/roastEngine");
+    const Roast = require("../models/Roast");
+    const authRoute = require("../routes/auth");
+
+    it("should export all 5 canonical persona archetypes in PERSONA_CONFIG", () => {
+        assert.ok(PERSONA_CONFIG.classic, "Classic persona must exist");
+        assert.ok(PERSONA_CONFIG.hinglish, "Hinglish persona must exist");
+        assert.ok(PERSONA_CONFIG.techbro, "Tech Bro persona must exist");
+        assert.ok(PERSONA_CONFIG.ramsay, "Gordon Ramsay persona must exist");
+        assert.ok(PERSONA_CONFIG.shakespearean, "Shakespearean persona must exist");
+
+        assert.equal(PERSONA_CONFIG.hinglish.name, "Desi Tech Lead");
+        assert.equal(PERSONA_CONFIG.techbro.name, "Silicon Valley Tech Bro");
+        assert.equal(PERSONA_CONFIG.ramsay.name, "Gordon Ramsay of Code");
+        assert.equal(PERSONA_CONFIG.shakespearean.name, "Shakespearean Tragedy");
+    });
+
+    it("should adapt deterministic generator output based on persona", () => {
+        const mockData = {
+            score: 25,
+            grade: "F",
+            _raw: { topLanguage: "JavaScript", totalStars: 0 },
+            repoAnalysis: { totalOwn: 5, abandonedCount: 4, abandonedPct: 80 },
+            commitAnalysis: { qualityScore: 20, shameList: ["fix bug", "wip"] },
+        };
+
+        const classicRoast = generateRoast(mockData, "savage", "classic");
+        const hinglishRoast = generateRoast(mockData, "savage", "hinglish");
+        const techBroRoast = generateRoast(mockData, "savage", "techbro");
+        const ramsayRoast = generateRoast(mockData, "savage", "ramsay");
+        const shakespeareanRoast = generateRoast(mockData, "savage", "shakespearean");
+
+        assert.ok(classicRoast && classicRoast.length > 20);
+        const hinglishLower = hinglishRoast.toLowerCase();
+        assert.ok(
+            hinglishLower.includes("bhai") || hinglishLower.includes("production") || hinglishLower.includes("salary") || hinglishLower.includes("onsite"),
+            "Hinglish roast must include authentic Desi Tech Lead slang"
+        );
+        assert.ok(
+            techBroRoast.includes("bro") || techBroRoast.includes("conviction") || techBroRoast.includes("alpha") || techBroRoast.includes("Web3") || techBroRoast.includes("YC"),
+            "Tech Bro roast must include Silicon Valley founder buzzwords"
+        );
+        const ramsayLower = ramsayRoast.toLowerCase();
+        assert.ok(
+            ramsayLower.includes("raw") || ramsayLower.includes("disaster") || ramsayLower.includes("sandwich") || ramsayLower.includes("wake up") || ramsayLower.includes("embarrassment") || ramsayLower.includes("dreadful") || ramsayLower.includes("donkey") || ramsayLower.includes("shut it down"),
+            "Gordon Ramsay roast must include furious culinary outbursts"
+        );
+        assert.ok(
+            shakespeareanRoast.includes("thou") || shakespeareanRoast.includes("thy") || shakespeareanRoast.includes("Alas") || shakespeareanRoast.includes("Hark"),
+            "Shakespearean roast must include Elizabethan tragic phrasing"
+        );
+    });
+
+    it("should reject invalid preferences with 400 INVALID_PREFERENCES", async () => {
+        let statusCode = 0;
+        let responseData = null;
+        const req = {
+            body: { invalidKey: "random_nonsense" },
+            user: { _id: "64b000000000000000000001" },
+        };
+        const res = {
+            status: (code) => {
+                statusCode = code;
+                return res;
+            },
+            json: (data) => {
+                responseData = data;
+                return res;
+            },
+        };
+
+        const prefLayer = authRoute.stack.find(
+            (layer) => layer.route && layer.route.path === "/preferences" && layer.route.methods.patch,
+        );
+        assert.ok(prefLayer, "/preferences PATCH route must exist");
+        const handler = prefLayer.route.stack[prefLayer.route.stack.length - 1].handle;
+        await handler(req, res);
+
+        assert.equal(statusCode, 400);
+        assert.equal(responseData.error, "INVALID_PREFERENCES");
+    });
+
+    it("should initialize Roast with default persona 'classic' and isPrivate false", () => {
+        const roast = new Roast({
+            username: "testuser",
+            score: 50,
+            grade: "C",
+            roastText: "Average code.",
+        });
+
+        assert.equal(roast.persona, "classic");
+        assert.equal(roast.isPrivate, false);
+    });
+});
+
+describe("Feature #20 — 3D Code Solar System & Universe Engine", () => {
+    const { analyzeUniverse } = require("../services/githubService");
+    const roastRoute = require("../routes/roast");
+
+    it("should mount /:username/universe before dynamic /:username route", () => {
+        const universeIndex = roastRoute.stack.findIndex(
+            (layer) => layer.route && layer.route.path === "/:username/universe" && layer.route.methods.get,
+        );
+        const dynamicUserIndex = roastRoute.stack.findIndex(
+            (layer) => layer.route && layer.route.path === "/:username" && layer.route.methods.get,
+        );
+
+        assert.ok(universeIndex !== -1, "/:username/universe route must be registered");
+        assert.ok(dynamicUserIndex !== -1, "/:username route must be registered");
+        assert.ok(
+            universeIndex < dynamicUserIndex,
+            "/:username/universe must precede /:username for Express route precedence",
+        );
+    });
+
+    it("should transform GitHub profile and repositories into a structured 3D solar system", async () => {
+        const originalFetch = global.fetch;
+
+        try {
+            global.fetch = async (url) => {
+                if (url.includes("/users/astrodev/repos")) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => [
+                            {
+                                name: "active-magma-api",
+                                description: "Burning fast API service",
+                                language: "TypeScript",
+                                stargazers_count: 5,
+                                forks_count: 0,
+                                size: 500,
+                                pushed_at: new Date().toISOString(),
+                                created_at: "2024-01-01T00:00:00Z",
+                                fork: false,
+                            },
+                            {
+                                name: "popular-living-framework",
+                                description: "Production ready web framework",
+                                language: "Rust",
+                                stargazers_count: 120,
+                                forks_count: 12,
+                                size: 4000,
+                                pushed_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+                                created_at: "2023-01-01T00:00:00Z",
+                                fork: false,
+                            },
+                            {
+                                name: "ancient-frozen-graveyard",
+                                description: "Old frozen experiment",
+                                language: "Python",
+                                stargazers_count: 1,
+                                forks_count: 0,
+                                size: 200,
+                                pushed_at: new Date(Date.now() - 500 * 24 * 3600 * 1000).toISOString(),
+                                created_at: "2021-01-01T00:00:00Z",
+                                fork: false,
+                            },
+                            {
+                                name: "massive-node-modules-black-hole",
+                                description: "",
+                                language: "JavaScript",
+                                stargazers_count: 0,
+                                forks_count: 0,
+                                size: 350000,
+                                pushed_at: new Date(Date.now() - 800 * 24 * 3600 * 1000).toISOString(),
+                                created_at: "2020-01-01T00:00:00Z",
+                                fork: false,
+                            },
+                        ],
+                    };
+                }
+
+                if (url.includes("/users/astrodev")) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({
+                            login: "astrodev",
+                            name: "Cosmic Developer",
+                            avatar_url: "https://avatars.githubusercontent.com/u/12345?v=4",
+                            bio: "Exploring the cosmos through code.",
+                            public_repos: 4,
+                            followers: 42,
+                            following: 10,
+                            created_at: "2020-01-01T00:00:00Z",
+                            type: "User",
+                        }),
+                    };
+                }
+
+                return { ok: false, status: 404 };
+            };
+
+            const universe = await analyzeUniverse("astrodev");
+            assert.ok(universe.star, "Must include central star object");
+            assert.equal(universe.star.username, "astrodev");
+            assert.ok(universe.star.spectralClass, "Must assign spectral class to star");
+            assert.ok(universe.star.starColor, "Must assign star color");
+
+            assert.ok(Array.isArray(universe.planets), "Must include planets array");
+            assert.equal(universe.planets.length, 4);
+
+            const inferno = universe.planets.find((p) => p.name === "active-magma-api");
+            assert.ok(inferno, "Must include inferno planet");
+            assert.equal(inferno.planetType, "inferno");
+
+            const habitable = universe.planets.find((p) => p.name === "popular-living-framework");
+            assert.ok(habitable, "Must include habitable planet");
+            assert.equal(habitable.planetType, "habitable");
+
+            const frozen = universe.planets.find((p) => p.name === "ancient-frozen-graveyard");
+            assert.ok(frozen, "Must include frozen cryo planet");
+            assert.equal(frozen.planetType, "frozen_ice");
+
+            const blackHole = universe.planets.find((p) => p.name === "massive-node-modules-black-hole");
+            assert.ok(blackHole, "Must classify bloated repo as black hole");
+            assert.equal(blackHole.planetType, "black_hole");
+
+            assert.ok(universe.systemMetrics.totalPlanets === 4);
+            assert.ok(universe.systemMetrics.galaxyType);
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it("should reject organizations with ORGANIZATION_NOT_SUPPORTED", async () => {
+        const originalFetch = global.fetch;
+
+        try {
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    login: "fakeorg",
+                    type: "Organization",
+                }),
+            });
+
+            await assert.rejects(
+                async () => {
+                    await analyzeUniverse("fakeorg");
+                },
+                (err) => {
+                    assert.equal(err.code, "ORGANIZATION_NOT_SUPPORTED");
+                    return true;
+                },
+            );
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+});

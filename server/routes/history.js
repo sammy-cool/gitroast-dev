@@ -82,7 +82,7 @@ router.get("/leaderboard/search", async (req, res) => {
     const skip = (page - 1) * limit;
 
     const result = await Roast.aggregate([
-      { $match: { username: { $regex: safeQ, $options: "i" } } },
+      { $match: { username: { $regex: safeQ, $options: "i" }, isPrivate: { $ne: true } } },
       { $project: { username: { $toLower: "$username" }, score: 1 } },
       { $group: { _id: "$username", bestScore: { $min: "$score" }, roastCount: { $sum: 1 } } },
       { $facet: {

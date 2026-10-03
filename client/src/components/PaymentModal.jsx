@@ -13,10 +13,19 @@ export default function PaymentModal({ planId, onClose }) {
     useEffect(() => {
         const prev = document.body.style.overflow
         document.body.style.overflow = 'hidden'
+
+        function handleKeyDown(e) {
+            if (e.key === 'Escape' && typeof onClose === 'function') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+
         return () => {
             document.body.style.overflow = prev
+            window.removeEventListener('keydown', handleKeyDown)
         }
-    }, [])
+    }, [onClose])
 
     if (!isClient || typeof document === 'undefined') return null
 

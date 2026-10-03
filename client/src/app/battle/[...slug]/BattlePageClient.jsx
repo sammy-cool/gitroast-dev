@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { createToast } from 'customizable-toast-notification'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { toast } from '@/utils/toast'
 import BattleCard from '@/components/BattleCard'
 import Breadcrumb from '@/components/Breadcrumb'
 import { getBattleRoast } from '@/services/roastService'
@@ -26,6 +27,8 @@ export default function BattlePageClient({ user1, user2 }) {
     const [battleData, setBattleData] = useState(null)
     const [visibleSteps, setVisibleSteps] = useState(0)
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const isRematch = searchParams?.get('rematch') === 'true'
     const { getToken } = useAuth()
 
     useEffect(() => {
@@ -41,25 +44,27 @@ export default function BattlePageClient({ user1, user2 }) {
         async function fetchBattle() {
             const pairKey = [(user1 || '').toLowerCase(), (user2 || '').toLowerCase()].sort().join('-vs-')
             const cacheKey = `gitroast_battle_${pairKey}`
-            try {
-                const cached = sessionStorage.getItem(cacheKey)
-                if (cached) {
-                    const parsed = JSON.parse(cached)
-                    if (Date.now() - parsed.cachedAt < 5 * 60 * 1000) {
-                        if (cancelled) return
-                        setBattleData(parsed.data)
-                        setView('result')
-                        return
+            if (!isRematch) {
+                try {
+                    const cached = sessionStorage.getItem(cacheKey)
+                    if (cached) {
+                        const parsed = JSON.parse(cached)
+                        if (Date.now() - parsed.cachedAt < 5 * 60 * 1000) {
+                            if (cancelled) return
+                            setBattleData(parsed.data)
+                            setView('result')
+                            return
+                        }
                     }
+                } catch {
                 }
-            } catch {
             }
 
             try {
                 const token = getToken()
 
                 const [data] = await Promise.all([
-                    getBattleRoast(user1, user2, token),
+                    getBattleRoast(user1, user2, token, isRematch),
                     new Promise(resolve => setTimeout(resolve, MIN_BATTLE_TIME)),
                 ])
 
@@ -73,55 +78,41 @@ export default function BattlePageClient({ user1, user2 }) {
                 setBattleData(data)
                 setView('result')
 
-                createToast({
-                    type: 'success',
-                    message: data.winner
-                        ? `⚔️ Battle complete! @${data.winner} is the most roastable!`
-                        : "⚔️ Battle complete! It's a draw — equally shameful.",
-                    position: 'top-center',
-                    showProgressBar: true,
-                    duration: 4000,
-                })
+                toast.battleComplete(data.winner)
 
             } catch (err) {
                 if (cancelled) return
 
                 const isLoggedIn = !!getToken();
                 if (err.code === 'CAPTCHA_REQUIRED' || err.code === 'CAPTCHA_FAILED') {
-                    createToast({
-                        type: 'warning',
-                        message: err.message || (isLoggedIn ? 'Bot verification check could not be completed. Please try again.' : 'Bot verification blocked by browser shield. Please log in with GitHub to battle!'),
-                        position: 'top-center',
-                        duration: 8000,
-                        showCloseButton: true,
-                        ...(!isLoggedIn && {
-                            cta: {
-                                label: 'Login via GitHub ↗',
-                                onClick: () => {
-                                    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-                                    window.location.href = `${apiBase}/api/auth/github`
+                    toast.warning(
+                        err.message || (isLoggedIn ? 'Bot verification check could not be completed. Please try again.' : 'Bot verification blocked by browser shield. Please log in with GitHub to battle!'),
+                        {
+                            duration: 8000,
+                            ...(!isLoggedIn && {
+                                cta: {
+                                    label: 'Login via GitHub ↗',
+                                    onClick: () => {
+                                        const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                                        window.location.href = `${apiBase}/api/auth/github`
+                                    },
+                                    autoClose: true,
                                 },
-                                autoClose: true,
-                            },
-                        }),
-                    })
+                            }),
+                        }
+                    )
                 } else if (err.code === 'RATE_LIMIT_EXCEEDED') {
-                    const seconds = err.retryAfter ? `${err.retryAfter} seconds` : 'a minute'
-                    createToast({
-                        type: 'warning',
-                        message: `⏱ Too many battle requests. Try again in ${seconds}.`,
-                        position: 'top-center',
-                        duration: (err.retryAfter || 60) * 1000,
-                        showCloseButton: true,
-                    })
+                    toast.rateLimit(
+                        err.retryAfter,
+                        !isLoggedIn
+                            ? () => {
+                                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+                                window.location.href = `${apiBase}/api/auth/github`
+                            }
+                            : null
+                    )
                 } else {
-                    createToast({
-                        type: 'error',
-                        message: err.message || 'Battle failed. Check both usernames.',
-                        position: 'top-center',
-                        duration: 5000,
-                        showCloseButton: true,
-                    })
+                    toast.error(err.message || 'Battle failed. Check both usernames.')
                 }
                 router.push('/battle')
             }
@@ -129,7 +120,7 @@ export default function BattlePageClient({ user1, user2 }) {
 
         fetchBattle()
         return () => { cancelled = true }
-    }, [user1, user2, router, getToken])
+    }, [user1, user2, router, getToken, isRematch])
 
     const progress = Math.round((visibleSteps / BATTLE_STEPS.length) * 100)
 
@@ -234,12 +225,12 @@ export default function BattlePageClient({ user1, user2 }) {
                     <div className="battle-nav">
                         <div className="font-display nav-logo text-fire">GITROAST ⚔️</div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="btn btn-ghost" onClick={() => router.push('/battle')}>
+                            <Link href="/battle" className="btn btn-ghost">
                                 ⚔️ New Battle
-                            </button>
-                            <button className="btn btn-ghost" onClick={() => router.push('/')}>
+                            </Link>
+                            <Link href="/" className="btn btn-ghost">
                                 ← Home
-                            </button>
+                            </Link>
                         </div>
                     </div>
                     <div className="breadcrumb-container">

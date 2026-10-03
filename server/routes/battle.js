@@ -76,7 +76,8 @@ router.get("/:user1/vs/:user2", optionalAuth, verifyCaptcha, async (req, res) =>
   const battlePairKey = [norm1, norm2].sort().join("-vs-");
   const cacheKey = `cache:battle:${battlePairKey}`;
 
-  if (redisService.isConfigured) {
+  const isRematchRequested = req.query.rematch === "true";
+  if (redisService.isConfigured && !isRematchRequested) {
     const cached = await redisService.get(cacheKey).catch(() => null);
     if (cached) {
       return res.status(200).json(cached);
@@ -331,6 +332,17 @@ router.post("/:id/view", async (req, res) => {
   try {
     if (mongoose.Types.ObjectId.isValid(id)) {
       await Battle.incrementView(id);
+    } else if (id && id.includes("-vs-")) {
+      const [u1, u2] = id.split("-vs-");
+      if (u1 && u2) {
+        const battle = await Battle.findOne({
+          $or: [
+            { user1: u1.trim().toLowerCase(), user2: u2.trim().toLowerCase() },
+            { user1: u2.trim().toLowerCase(), user2: u1.trim().toLowerCase() },
+          ],
+        });
+        if (battle) await Battle.incrementView(battle._id);
+      }
     }
     return res.status(200).json({ success: true });
   } catch {
@@ -343,6 +355,17 @@ router.post("/:id/share", async (req, res) => {
   try {
     if (mongoose.Types.ObjectId.isValid(id)) {
       await Battle.incrementShare(id);
+    } else if (id && id.includes("-vs-")) {
+      const [u1, u2] = id.split("-vs-");
+      if (u1 && u2) {
+        const battle = await Battle.findOne({
+          $or: [
+            { user1: u1.trim().toLowerCase(), user2: u2.trim().toLowerCase() },
+            { user1: u2.trim().toLowerCase(), user2: u1.trim().toLowerCase() },
+          ],
+        });
+        if (battle) await Battle.incrementShare(battle._id);
+      }
     }
     return res.status(200).json({ success: true });
   } catch {

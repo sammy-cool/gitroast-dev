@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import PaymentModal from './PaymentModal'
 import { useAuth } from '@/context/AuthContext'
-import { createToast } from 'customizable-toast-notification'
+import { toast } from '@/utils/toast'
 
 const subscribe = () => () => {}
 
@@ -61,12 +61,8 @@ export default function ProModal({ onClose }) {
 
     function handlePlanSelect(planId) {
         if (!user) {
-            createToast({
-                type: 'info',
-                message: '🔐 Connect GitHub first to upgrade.',
-                position: 'top-center',
+            toast.info('🔐 Connect GitHub first to upgrade.', {
                 duration: 6000,
-                showCloseButton: true,
                 cta: {
                     label: 'Connect GitHub →',
                     onClick: () => { onClose(); loginWithGitHub() },
@@ -74,6 +70,21 @@ export default function ProModal({ onClose }) {
                 },
             })
             return
+        }
+        if (user?.isPro) {
+            const userPlan = user?.proPlan || 'roaster';
+            if (userPlan === 'roaster' && planId === 'historian') {
+                setSelectedPlan(planId);
+                return;
+            }
+            if (userPlan === planId) {
+                toast.info('✓ You are already subscribed to this plan.');
+                return;
+            }
+            if (userPlan === 'historian' && planId === 'roaster') {
+                toast.info('⚡ Historian plan includes all Roaster features.');
+                return;
+            }
         }
         setSelectedPlan(planId)
     }
@@ -98,7 +109,27 @@ export default function ProModal({ onClose }) {
                         </div>
 
                         <div className="modal-plans">
-                            {MODAL_PLANS.map(plan => (
+                            {MODAL_PLANS.map(plan => {
+                                const userPlan = user?.proPlan || (user?.isPro ? 'roaster' : 'none');
+                                const isCurrent = user?.isPro && userPlan === plan.id;
+                                const isIncluded = user?.isPro && userPlan === 'historian' && plan.id === 'roaster';
+                                const isUpgrade = user?.isPro && userPlan === 'roaster' && plan.id === 'historian';
+
+                                let ctaText = plan.cta;
+                                let isDisabled = false;
+
+                                if (isCurrent) {
+                                    ctaText = '✓ Current Plan';
+                                    isDisabled = true;
+                                } else if (isIncluded) {
+                                    ctaText = '✓ Included in Historian';
+                                    isDisabled = true;
+                                } else if (isUpgrade) {
+                                    ctaText = 'Upgrade to Historian ⚡';
+                                    isDisabled = false;
+                                }
+
+                                return (
                                 <div
                                     key={plan.id}
                                     className={`modal-plan ${plan.highlight ? 'modal-plan--highlight' : ''}`}
@@ -134,13 +165,14 @@ export default function ProModal({ onClose }) {
 
                                     <button
                                         type="button"
-                                        className={`btn modal-cta ${plan.highlight ? 'btn-primary' : 'btn-outline'}`}
+                                        className={`btn modal-cta ${isUpgrade || plan.highlight ? 'btn-primary' : 'btn-outline'}`}
                                         onClick={() => handlePlanSelect(plan.id)}
+                                        disabled={isDisabled}
                                     >
-                                        {plan.cta}
+                                        {ctaText}
                                     </button>
                                 </div>
-                            ))}
+                            )})}
                         </div>
 
                         <button

@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { createToast } from 'customizable-toast-notification';
+import { toast, toastPromise } from '@/utils/toast';
 import { useAuth } from '@/context/AuthContext';
 import { dispatchContactMessage } from '@/services/roastService';
 import Breadcrumb from '@/components/Breadcrumb';
@@ -31,19 +31,9 @@ export default function ContactPageClient() {
   function handleCopyEmail() {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(SUPPORT_EMAIL);
-      createToast({
-        type: 'success',
-        message: '📋 Email copied to clipboard! (priyanshu.alt191@gmail.com)',
-        position: 'top-center',
-        duration: 3500,
-        showProgressBar: true,
-      });
+      toast.copy('📋 Email copied to clipboard! (priyanshu.alt191@gmail.com)');
     } else {
-      createToast({
-        type: 'info',
-        message: `Email: ${SUPPORT_EMAIL}`,
-        position: 'top-center',
-      });
+      toast.info(`Email: ${SUPPORT_EMAIL}`);
     }
   }
 
@@ -51,46 +41,31 @@ export default function ContactPageClient() {
     e.preventDefault();
 
     if (!message.trim()) {
-      createToast({
-        type: 'warning',
-        message: 'Please provide a message before sending!',
-        position: 'top-center',
-      });
+      toast.warning('Please provide a message before sending!');
       return;
     }
 
     setSending(true);
 
     try {
-      const res = await dispatchContactMessage({
-        category,
-        name: name.trim() || undefined,
-        email: email.trim() || undefined,
-        message: message.trim(),
-      });
+      const res = await toastPromise(
+        dispatchContactMessage({
+          category,
+          name: name.trim() || undefined,
+          email: email.trim() || undefined,
+          message: message.trim(),
+        }),
+        {
+          loading: '📬 Dispatching message to GitRoast team...',
+          success: (data) => `🔥 Message dispatched! Reference #${data?.ticketId || 'GR-CONFIRMED'}`,
+          error: (err) => err?.message || 'Dispatch failed. You can also email us directly!',
+        }
+      );
 
-      const ref = res.ticketId || `GR-${Math.floor(100000 + Math.random() * 900000)}`;
+      const ref = res?.ticketId || `GR-${Math.floor(100000 + Math.random() * 900000)}`;
       setTicketId(ref);
       setSubmitted(true);
-
-      createToast({
-        type: 'success',
-        message: `🔥 Message dispatched! Reference #${ref}`,
-        position: 'top-center',
-        duration: 5000,
-        showProgressBar: true,
-      });
-    } catch (err) {
-      createToast({
-        type: 'error',
-        message: err.message || 'Dispatch failed. You can also email us directly!',
-        position: 'top-center',
-        duration: 6000,
-        cta: {
-          label: 'Copy Email',
-          onClick: handleCopyEmail,
-        },
-      });
+    } catch {
     } finally {
       setSending(false);
     }
@@ -219,12 +194,7 @@ export default function ContactPageClient() {
                 onClick={() => {
                   if (typeof navigator !== 'undefined' && navigator.clipboard) {
                     navigator.clipboard.writeText(ticketId);
-                    createToast({
-                      type: 'success',
-                      message: `📋 Copied Ticket #${ticketId} to clipboard!`,
-                      position: 'top-center',
-                      duration: 3000,
-                    });
+                    toast.copy(`📋 Copied Ticket #${ticketId} to clipboard!`);
                   }
                 }}
               >

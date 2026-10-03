@@ -11,7 +11,11 @@ setInterval(
       }
     }
     if (requestCounts.size >= 50000) {
-      requestCounts.clear();
+      let count = 0;
+      for (const key of requestCounts.keys()) {
+        requestCounts.delete(key);
+        if (++count > 5000) break;
+      }
     }
   },
   5 * 60 * 1000,
@@ -33,7 +37,7 @@ function createRateLimiter({
 
     let routeScope = req.baseUrl || req.path;
     if (req.baseUrl === "/api/roast") {
-      if (req.path === "/feed" || req.path === "/stats") {
+      if (req.path === "/feed" || req.path === "/stats" || req.path === "/rate-limit-status") {
         routeScope = `/api/roast${req.path}`;
       } else {
         routeScope = "/api/roast/profile";

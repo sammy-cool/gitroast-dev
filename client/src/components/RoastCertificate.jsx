@@ -2,7 +2,7 @@
 
 
 import { useState, useRef } from "react";
-import { createToast } from "customizable-toast-notification";
+import { toastPromise } from "@/utils/toast";
 
 const GRADE_MESSAGES = {
     A: "Awarded for suspicious competence in a field that expects mediocrity.",
@@ -41,68 +41,64 @@ export default function RoastCertificate({
     });
 
     async function handleCertificate() {
+        if (generating) return;
         setGenerating(true);
+
         try {
-            const html2canvas = (await import("html2canvas")).default;
-            const el = certRef.current;
-            if (!el) throw new Error("Certificate element not found");
+            await toastPromise(
+                (async () => {
+                    const html2canvas = (await import("html2canvas")).default;
+                    const el = certRef.current;
+                    if (!el) throw new Error("Certificate element not found");
 
-            el.style.display = "block";
 
-            const canvas = await html2canvas(el, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: "#F5F0E8",
-                logging: false,
-                windowWidth: 800,
-                windowHeight: 600,
-            });
+                    const canvas = await html2canvas(el, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: "#F5F0E8",
+                        logging: false,
+                        windowWidth: 800,
+                        windowHeight: 600,
+                    });
 
-            el.style.display = "none";
 
-            if (!isPro) {
-                const ctx = canvas.getContext("2d");
-                ctx.save();
-                ctx.globalAlpha = 0.12;
-                ctx.fillStyle = "#FF6B00";
-                ctx.font = 'bold 32px "Courier New", monospace';
-                ctx.textAlign = "center";
-                const angle = -Math.PI / 6;
-                for (let y = -100; y < canvas.height + 100; y += 160) {
-                    for (let x = -100; x < canvas.width + 100; x += 240) {
+                    if (!isPro) {
+                        const ctx = canvas.getContext("2d");
                         ctx.save();
-                        ctx.translate(x, y);
-                        ctx.rotate(angle);
-                        ctx.fillText("ROASTED BY GITROAST", 0, 0);
+                        ctx.globalAlpha = 0.12;
+                        ctx.fillStyle = "#FF6B00";
+                        ctx.font = 'bold 32px "Courier New", monospace';
+                        ctx.textAlign = "center";
+                        const angle = -Math.PI / 6;
+                        for (let y = -100; y < canvas.height + 100; y += 160) {
+                            for (let x = -100; x < canvas.width + 100; x += 240) {
+                                ctx.save();
+                                ctx.translate(x, y);
+                                ctx.rotate(angle);
+                                ctx.fillText("ROASTED BY GITROAST", 0, 0);
+                                ctx.restore();
+                            }
+                        }
                         ctx.restore();
                     }
+
+                    const link = document.createElement("a");
+                    link.download = `gitroast-certificate-${username}.png`;
+                    link.href = canvas.toDataURL("image/png", 1.0);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                })(),
+                {
+                    loading: "🎓 Minting Certificate of GitHub Shame...",
+                    success: isPro
+                        ? "🎓 HD Certificate of Shame downloaded! (Pro Clean)"
+                        : "🎓 Certificate of GitHub Shame downloaded!",
+                    error: "Certificate generation failed. Try again.",
                 }
-                ctx.restore();
-            }
-
-            const link = document.createElement("a");
-            link.download = `gitroast-certificate-${username}.png`;
-            link.href = canvas.toDataURL("image/png", 1.0);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            createToast({
-                type: "success",
-                message: "🎓 Certificate of GitHub Shame downloaded!",
-                position: "top-center",
-                showProgressBar: true,
-                duration: 4000,
-            });
+            );
         } catch (err) {
             console.error("[Certificate] Failed:", err);
-            createToast({
-                type: "error",
-                message: "Certificate generation failed. Try again.",
-                position: "top-center",
-                duration: 4000,
-                showCloseButton: true,
-            });
             if (certRef.current) certRef.current.style.display = "none";
         } finally {
             setGenerating(false);
@@ -123,7 +119,7 @@ export default function RoastCertificate({
             </button>
 
             {}
-            <div ref={certRef} style={{ display: "none" }} aria-hidden="true">
+            <div ref={certRef} style={{ position: "absolute", left: "-9999px", top: "-9999px" }} aria-hidden="true">
                 <div className="cert-container">
                     {}
                     <div className="cert-border">

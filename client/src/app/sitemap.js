@@ -24,7 +24,19 @@ export default async function sitemap() {
       priority: 0.85,
     },
     {
+      url: `${SITE_URL}/universe`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.85,
+    },
+    {
       url: `${SITE_URL}/pricing`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/dashboard`,
       lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.8,
@@ -58,6 +70,12 @@ export default async function sitemap() {
         lastModified,
         changeFrequency: 'weekly',
         priority,
+      },
+      {
+        url: `${SITE_URL}/universe/${encodeURIComponent(username)}`,
+        lastModified,
+        changeFrequency: 'weekly',
+        priority: 0.65,
       }
     );
   }

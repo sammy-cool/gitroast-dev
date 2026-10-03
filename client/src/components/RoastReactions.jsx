@@ -1,9 +1,8 @@
 'use client'
 
 
-import { useState, useEffect } from 'react'
-import { createToast } from 'customizable-toast-notification'
-import { reactToRoast, reactToBattle } from '@/services/roastService'
+import { useState, useEffect, useCallback } from 'react'
+import { toast } from '@/utils/toast'
 
 const REACTION_CONFIG = [
     { type: 'relatable', emoji: '😂', label: 'Relatable' },
@@ -41,7 +40,11 @@ export default function RoastReactions({ roastId, initialReactions = {}, targetT
     const [justReactedType, setJustReactedType] = useState(null)
 
     const [prevInitial, setPrevInitial] = useState(initialReactions)
-    if (initialReactions && initialReactions !== prevInitial) {
+    const initialChanged = initialReactions &&
+        (prevInitial?.relatable !== initialReactions.relatable ||
+         prevInitial?.destroyed !== initialReactions.destroyed ||
+         prevInitial?.savage !== initialReactions.savage)
+    if (initialChanged) {
         setPrevInitial(initialReactions)
         setCounts({
             relatable: initialReactions.relatable || 0,
@@ -71,9 +74,7 @@ export default function RoastReactions({ roastId, initialReactions = {}, targetT
         if (clicked.has(type) || loading) return
 
         if (!roastId) {
-            createToast({
-                type: 'warning',
-                message: `${targetType === 'battle' ? 'Battle' : 'Roast'} is still saving, please wait a moment!`,
+            toast.warning(`${targetType === 'battle' ? 'Battle' : 'Roast'} is still saving, please wait a moment!`, {
                 position: 'top-center',
                 duration: 2500,
             })
@@ -116,9 +117,7 @@ export default function RoastReactions({ roastId, initialReactions = {}, targetT
                 localStorage.setItem(storageKey, JSON.stringify([...reverted]))
             } catch {
             }
-            createToast({
-                type: 'error',
-                message: 'Failed to record reaction. Check connection.',
+            toast.error('Failed to record reaction. Check connection.', {
                 position: 'top-center',
                 duration: 3000,
             })
@@ -127,9 +126,7 @@ export default function RoastReactions({ roastId, initialReactions = {}, targetT
 
         if (result.duplicate) {
             setCounts(c => ({ ...c, [type]: prev }))
-            createToast({
-                type: 'info',
-                message: `You've already reacted to this ${targetType === 'battle' ? 'battle' : 'roast'}! 🔥`,
+            toast.info(`You've already reacted to this ${targetType === 'battle' ? 'battle' : 'roast'}! 🔥`, {
                 position: 'top-center',
                 duration: 3000,
             })
@@ -145,9 +142,7 @@ export default function RoastReactions({ roastId, initialReactions = {}, targetT
         }
 
         const config = REACTION_CONFIG.find(r => r.type === type)
-        createToast({
-            type: 'success',
-            message: `${config ? config.emoji + ' ' + config.label : 'Reaction'} locked in!`,
+        toast.success(`${config ? config.emoji + ' ' + config.label : 'Reaction'} locked in!`, {
             position: 'top-center',
             duration: 2500,
         })

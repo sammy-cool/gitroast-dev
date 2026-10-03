@@ -43,6 +43,18 @@ router.post("/create-order", requireAuth, async (req, res) => {
   try {
     const { order, plan } = await createOrder(planId, req.user._id);
 
+    try {
+      await Payment.create({
+        userId: req.user._id,
+        razorpayOrderId: order.id,
+        planId,
+        amount: plan.amount,
+        status: "pending",
+      });
+    } catch (orderRecordErr) {
+      logger.warn("Payment", "Could not record pending payment", { error: orderRecordErr.message });
+    }
+
     return res.status(200).json({
       success: true,
       orderId: order.id,
@@ -81,6 +93,19 @@ router.post("/verify", requireAuth, async (req, res) => {
   }
 
   try {
+    const pendingOrder = await Payment.findOne({ razorpayOrderId: orderId });
+    if (pendingOrder && pendingOrder.planId !== planId) {
+      logger.warn("Payment", "Plan tampering attempt detected", {
+        userId: req.user._id,
+        orderPlan: pendingOrder.planId,
+        requestedPlan: planId,
+      });
+      return res.status(400).json({
+        error: "PLAN_MISMATCH",
+        message: "Requested plan does not match the payment order.",
+      });
+    }
+
     const existing = await Payment.findOne({ razorpayPaymentId: paymentId });
     if (existing) {
       return res
@@ -89,14 +114,20 @@ router.post("/verify", requireAuth, async (req, res) => {
     }
 
     try {
-      await Payment.create({
-        userId: req.user._id,
-        razorpayOrderId: orderId,
-        razorpayPaymentId: paymentId,
-        planId,
-        amount: PLANS[planId]?.amount || 0,
-        status: "captured",
-      });
+      if (pendingOrder) {
+        pendingOrder.razorpayPaymentId = paymentId;
+        pendingOrder.status = "captured";
+        await pendingOrder.save();
+      } else {
+        await Payment.create({
+          userId: req.user._id,
+          razorpayOrderId: orderId,
+          razorpayPaymentId: paymentId,
+          planId,
+          amount: PLANS[planId]?.amount || 0,
+          status: "captured",
+        });
+      }
     } catch (paymentErr) {
       logger.error("Payment", "Verify failed", { message: paymentErr.message });
     }
@@ -110,6 +141,7 @@ router.post("/verify", requireAuth, async (req, res) => {
       success: true,
       message: "⚡ Pro unlocked! Enjoy the nuclear roasts.",
       isPro: true,
+      proPlan: req.user.proPlan,
     });
   } catch (err) {
     logger.error("Payment", "Verify DB error", { message: err.message });
@@ -154,15 +186,16 @@ router.post("/webhook", async (req, res) => {
       const amount = paymentEntity?.amount || orderEntity?.amount || 0;
 
       const isValidUserId = userId && mongoose.Types.ObjectId.isValid(userId);
+      let paymentDoc = null;
 
       if (paymentId) {
-        let paymentDoc = await Payment.findOne({
+        paymentDoc = await Payment.findOne({
           razorpayPaymentId: paymentId,
         });
 
         if (!paymentDoc) {
           if (isValidUserId) {
-            await Payment.create({
+            paymentDoc = await Payment.create({
               userId,
               razorpayOrderId: orderId || "webhook_captured",
               razorpayPaymentId: paymentId,
@@ -179,6 +212,7 @@ router.post("/webhook", async (req, res) => {
               existingOrderByOrder.razorpayPaymentId = paymentId;
               existingOrderByOrder.status = "captured";
               await existingOrderByOrder.save();
+              paymentDoc = existingOrderByOrder;
             } else {
               logger.warn("Payment", "Webhook payment received without valid userId or pre-existing order", {
                 paymentId,
@@ -197,7 +231,7 @@ router.post("/webhook", async (req, res) => {
         const user = await User.findById(userId);
         if (user && !user.isPro) {
           user.isPro = true;
-          user.proPlan = (paymentDoc && paymentDoc.planId) || "roaster";
+          user.proPlan = (paymentDoc && paymentDoc.planId) || planId || "roaster";
           user.proSince = new Date();
           await user.save();
           logger.info("Payment", `Pro unlocked via webhook for user ${userId}`);

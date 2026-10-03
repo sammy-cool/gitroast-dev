@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
 const User = require("../models/User");
+const Roast = require("../models/Roast");
 const {
   createToken,
   extractToken,
@@ -150,6 +151,59 @@ router.get("/me", requireAuth, (req, res) => {
     success: true,
     user: req.user.toSafeObject(),
   });
+});
+
+router.patch("/preferences", requireAuth, async (req, res) => {
+  try {
+    const { defaultIntensity, defaultPersona, cardTheme, hideFromLeaderboard } = req.body || {};
+
+    const updates = {};
+    const VALID_INTENSITIES = new Set(["mild", "savage", "nuclear"]);
+    const VALID_PERSONAS = new Set(["classic", "hinglish", "techbro", "ramsay", "shakespearean"]);
+
+    if (defaultIntensity && VALID_INTENSITIES.has(defaultIntensity)) {
+      if (defaultIntensity === "nuclear" && !req.user.isPro) {
+        return res.status(403).json({
+          error: "PRO_REQUIRED",
+          message: "Nuclear intensity preference is reserved for Pro members.",
+        });
+      }
+      updates["customPreferences.defaultIntensity"] = defaultIntensity;
+    }
+    if (defaultPersona && VALID_PERSONAS.has(defaultPersona)) {
+      updates["customPreferences.defaultPersona"] = defaultPersona;
+    }
+    if (typeof cardTheme === "string" && cardTheme.trim()) {
+      updates["customPreferences.cardTheme"] = cardTheme.trim().slice(0, 30);
+    }
+    if (typeof hideFromLeaderboard === "boolean") {
+      updates["customPreferences.hideFromLeaderboard"] = hideFromLeaderboard;
+      const safeUsername = (req.user.username || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await Roast.updateMany(
+        { username: new RegExp(`^${safeUsername}$`, "i") },
+        { $set: { isPrivate: hideFromLeaderboard } }
+      ).catch((err) => logger.warn("Auth", "Failed updating past roasts privacy", { error: err.message }));
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "INVALID_PREFERENCES", message: "No valid preferences provided." });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updates },
+      { returnDocument: "after", runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Preferences updated successfully.",
+      user: updatedUser.toSafeObject(),
+    });
+  } catch (err) {
+    logger.error("Auth", "Preferences update failed", { message: err.message });
+    return res.status(500).json({ error: "SERVER_ERROR", message: "Failed to update preferences." });
+  }
 });
 
 router.post("/logout", (req, res) => {
